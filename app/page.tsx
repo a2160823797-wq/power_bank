@@ -20,6 +20,13 @@ import BatteryMonitor, {
 } from '@/components/battery-monitor';
 import { LanguageProvider, useLanguage } from '@/lib/language';
 import { localizeProtocolMessage } from '@/lib/protocol-messages';
+import {
+  getWorkspaceView,
+  getServerWorkspaceView,
+  setWorkspaceView,
+  subscribeWorkspaceView,
+  type WorkspaceView,
+} from '@/lib/workspace-view';
 import NtcSimulator, {
   type NtcSimulatorHandle,
 } from '@/components/ntc-simulator';
@@ -151,7 +158,11 @@ export default function Home() {
 function Workspace() {
   const { language, setLanguage } = useLanguage();
   const t = messages[language];
-  const [view, setView] = useState<'battery' | 'ntc' | 'upgrade'>('battery');
+  const view = useSyncExternalStore(
+    subscribeWorkspaceView,
+    getWorkspaceView,
+    getServerWorkspaceView,
+  );
   const [switchingView, setSwitchingView] = useState(false);
   const [monitorBusy, setMonitorBusy] = useState(false);
   const monitorBusyRef = useRef(false);
@@ -295,7 +306,7 @@ function Workspace() {
     await sessionRef.current?.cancel();
   }
 
-  async function changeView(nextView: 'battery' | 'ntc' | 'upgrade') {
+  async function changeView(nextView: WorkspaceView) {
     if (
       view === nextView ||
       runningRef.current ||
@@ -309,7 +320,7 @@ function Workspace() {
       await monitorRef.current?.disconnect();
       await ntcRef.current?.disconnect();
       autoConnectMonitorRef.current = false;
-      setView(nextView);
+      setWorkspaceView(nextView);
     } catch {
       // 监测页保留断开失败提示，串口释放后再切换
     } finally {
