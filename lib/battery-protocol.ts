@@ -74,7 +74,7 @@ function supportedLength(command: number, length: number) {
   }
 }
 
-// 流式解析 AA BB 监测帧；AA 55 固件升级帧不进入监测通道。
+// 按外层帧边界隔离 IAP/NTC 数据，载荷中的 AA BB 不进入监测通道。
 export class BatteryFrameParser {
   private bytes: number[] = [];
 
@@ -97,7 +97,27 @@ export class BatteryFrameParser {
 
   private drain() {
     while (this.bytes.length >= 2) {
-      if (this.bytes[0] !== 0xaa || this.bytes[1] !== 0xbb) {
+      if (this.bytes[0] !== 0xaa) {
+        this.bytes.shift();
+        continue;
+      }
+      if (this.bytes[1] === 0x55) {
+        if (this.bytes.length < 5) return;
+        const length = this.bytes[3] | (this.bytes[4] << 8);
+        if (length > 128) {
+          this.bytes.shift();
+          continue;
+        }
+        if (this.bytes.length < length + 6) return;
+        this.bytes.splice(0, length + 6);
+        continue;
+      }
+      if (this.bytes[1] === 0x81 || this.bytes[1] === 0x82) {
+        if (this.bytes.length < 12) return;
+        this.bytes.splice(0, 12);
+        continue;
+      }
+      if (this.bytes[1] !== 0xbb) {
         this.bytes.shift();
         continue;
       }
@@ -123,7 +143,7 @@ export class BatteryFrameParser {
         crc8(frame.subarray(2, frame.length - 1)) !== frame[frame.length - 1]
       ) {
         this.onInvalid();
-        this.bytes.shift();
+        this.bytes.splice(0, frame.length);
         continue;
       }
       this.bytes.splice(0, frame.length);
@@ -221,6 +241,28 @@ interface BatteryCallbacks {
   onError(message: string): void;
 }
 
+export class BatteryIdentityTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`设备未响应电池识别请求（${timeoutMs} ms）`);
+    this.name = 'BatteryIdentityTimeoutError';
+  }
+}
+
+interface BatteryIdentity {
+  model: string;
+  code: string;
+}
+
+interface PendingIdentity {
+  sent: boolean;
+  resolve(identity: BatteryIdentity): void;
+  reject(error: Error): void;
+}
+
+function identityAbortError() {
+  return new DOMException('设备识别已取消', 'AbortError');
+}
+
 export class BatterySerialSession {
   private state = createBatteryState();
   private reader: ReturnType<
@@ -242,6 +284,7 @@ export class BatterySerialSession {
   private historyStarted = false;
   private historyInvalid = false;
   private historyRecords = new Map<number, SafetyRecord>();
+  private pendingIdentity: PendingIdentity | null = null;
   private readonly parser: BatteryFrameParser;
 
   constructor(
@@ -254,6 +297,10 @@ export class BatterySerialSession {
         if (this.historyStarted) this.historyInvalid = true;
       },
     );
+  }
+
+  get isOpen() {
+    return this.active && !this.closing;
   }
 
   async open() {
@@ -298,6 +345,7 @@ export class BatterySerialSession {
     if (this.closeTask) return this.closeTask;
     this.closing = true;
     this.active = false;
+    this.pendingIdentity?.reject(new Error('串口已关闭'));
     this.cancelWriteDelay?.();
     this.parser.clear();
     this.closeTask = this.releaseResources().catch((error) => {
@@ -356,6 +404,9 @@ export class BatterySerialSession {
 
   private fail(error: unknown) {
     if (!this.active) return;
+    this.pendingIdentity?.reject(
+      error instanceof Error ? error : new Error(String(error)),
+    );
     this.callbacks.onError(this.errorMessage(error));
     this.notifyDisconnect = true;
     void this.closeSession().catch(() => {});
@@ -390,6 +441,49 @@ export class BatterySerialSession {
     return this.request([[0x0a, new Uint8Array([0])]]);
   }
 
+  identify(timeoutMs: number, signal?: AbortSignal): Promise<BatteryIdentity> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 0x7fffffff)
+      return Promise.reject(new RangeError('回复超时必须大于 0 ms'));
+    if (signal?.aborted) return Promise.reject(identityAbortError());
+    if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
+    if (this.pendingIdentity)
+      return Promise.reject(new Error('上一条设备识别请求尚未结束'));
+    let pending: PendingIdentity;
+    const response = new Promise<BatteryIdentity>((resolve, reject) => {
+      const finish = (identity?: BatteryIdentity, error?: Error) => {
+        if (this.pendingIdentity !== pending) return;
+        this.pendingIdentity = null;
+        globalThis.clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        if (error) reject(error);
+        else resolve(identity!);
+      };
+      pending = {
+        sent: false,
+        resolve: (identity) => finish(identity),
+        reject: (error) => finish(undefined, error),
+      };
+      const onAbort = () => pending.reject(identityAbortError());
+      const timer = globalThis.setTimeout(
+        () => pending.reject(new BatteryIdentityTimeoutError(timeoutMs)),
+        timeoutMs,
+      );
+      this.pendingIdentity = pending;
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    const write = this.queueWrite(
+      [[0x08, new Uint8Array()]],
+      () => this.pendingIdentity === pending,
+      () => {
+        pending.sent = true;
+      },
+    );
+    void write.catch((error: unknown) => {
+      pending.reject(error instanceof Error ? error : new Error(String(error)));
+    });
+    return Promise.all([response, write]).then(([identity]) => identity);
+  }
+
   private request(commands: [number, Uint8Array][]) {
     if (!this.active) return Promise.reject(new Error('请先连接设备'));
     this.historyStarted = false;
@@ -397,10 +491,19 @@ export class BatterySerialSession {
     this.state.historyStatus = 'receiving';
     this.state.historyExpected = null;
     this.emit();
+    return this.queueWrite(commands);
+  }
+
+  private queueWrite(
+    commands: [number, Uint8Array][],
+    canWrite: () => boolean = () => true,
+    beforeWrite: () => void = () => {},
+  ) {
     const task = this.writeTail
       .then(async () => {
         for (const [command, payload] of commands) {
           if (!this.active) throw new Error('串口已关闭');
+          if (!canWrite()) return;
           const remaining =
             COMMAND_INTERVAL_MS - (Date.now() - this.lastWriteAt);
           if (remaining > 0) {
@@ -417,6 +520,8 @@ export class BatterySerialSession {
             });
           }
           if (!this.active) throw new Error('串口已关闭');
+          if (!canWrite()) return;
+          beforeWrite();
           await this.writer!.write(batteryFrame(command, payload));
           this.lastWriteAt = Date.now();
         }
@@ -439,6 +544,12 @@ export class BatterySerialSession {
       return;
     }
     this.state.lastReceivedAt = Date.now();
+    if (command === 0x08 && this.pendingIdentity?.sent) {
+      this.pendingIdentity.resolve({
+        model: this.state.batteryModel!,
+        code: this.state.batteryCode!,
+      });
+    }
     this.emit();
   }
 

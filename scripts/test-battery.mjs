@@ -22,6 +22,7 @@ const iapUrl = moduleUrl(
 );
 const {
   BatterySerialSession,
+  BatteryIdentityTimeoutError,
   BatteryFrameParser,
   batteryFrame,
   createBatteryState,
@@ -33,6 +34,7 @@ const {
     ),
   )
 );
+const { crc8 } = await import(iapUrl);
 
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const data = (values) => Uint8Array.from(values);
@@ -566,4 +568,291 @@ test('new device session cannot inherit previous readings or complete history', 
   await first.session.close();
   const second = await fixture(t);
   assert.deepEqual(second.state, createBatteryState());
+});
+
+const identityPayload = (model = 'PACK-16', code = 'BAT-001') => [
+  model.length,
+  ...Buffer.from(model),
+  code.length,
+  ...Buffer.from(code),
+];
+
+test('identity reads only model and code with existing command and keeps history unread', async (t) => {
+  for (const command of [0x08, 0x88]) {
+    const f = await fixture(t);
+    let resolved = false;
+    const identifying = f.session.identify(500).then((identity) => {
+      resolved = true;
+      return identity;
+    });
+    await tick();
+    assert.equal(f.session.isOpen, true);
+    assert.equal(resolved, false);
+    assert.deepEqual(f.port.writes.map((bytes) => Array.from(bytes)), [[...frame(8, [])]]);
+    assert.equal(f.state.historyStatus, 'unread');
+    await f.send(command, identityPayload());
+    assert.deepEqual(await identifying, { model: 'PACK-16', code: 'BAT-001' });
+    assert.equal(f.state.batteryModel, 'PACK-16');
+    assert.equal(f.state.batteryCode, 'BAT-001');
+    assert.equal(f.state.historyStatus, 'unread');
+    assert.equal(f.port.writes.length, 1);
+  }
+});
+
+test('identity ignores old readings, unrelated data, invalid CRC and malformed text', async (t) => {
+  const f = await fixture(t);
+  await f.send(8, identityPayload('OLD', 'OLD-CODE'));
+  let resolved = false;
+  const identifying = f.session.identify(500).then((identity) => {
+    resolved = true;
+    return identity;
+  });
+  await tick();
+  assert.equal(resolved, false);
+  const broken = frame(8, identityPayload('BROKEN', 'CRC'));
+  broken[broken.length - 1] ^= 1;
+  f.port.push(broken);
+  await f.send(2, [0, 250, 0]);
+  await f.send(3, u32(timestamp));
+  for (const payload of [
+    [0, 1, 65],
+    [1, 65, 0],
+    [1, 0, 1, 65],
+    [1, 65, 1, 0x7f],
+    [1, 65, 2, 66],
+    [1, 65, 1, 66, 67],
+  ]) await f.send(8, payload);
+  assert.equal(resolved, false);
+  assert.equal(f.state.batteryModel, 'OLD');
+  await f.send(0x88, identityPayload('NEW', 'NEW-CODE'));
+  assert.deepEqual(await identifying, { model: 'NEW', code: 'NEW-CODE' });
+});
+
+test('identity timeout rejects with its type, leaves session usable and clears the waiter', async (t) => {
+  const f = await fixture(t);
+  await assert.rejects(f.session.identify(15), BatteryIdentityTimeoutError);
+  assert.equal(f.session.isOpen, true);
+  assert.equal(f.state.historyStatus, 'unread');
+  const next = f.session.identify(500);
+  await tick();
+  await f.send(8, identityPayload());
+  assert.deepEqual(await next, { model: 'PACK-16', code: 'BAT-001' });
+  assert.equal(f.port.writes.length, 2);
+  assert.deepEqual(f.errors, []);
+});
+
+test('identity validates timeouts, rejects concurrent requests and cancels before or after write', async (t) => {
+  const f = await fixture(t);
+  for (const timeout of [0, -1, Infinity, NaN, 0x80000000])
+    await assert.rejects(f.session.identify(timeout), RangeError);
+  const aborted = AbortSignal.abort();
+  await assert.rejects(f.session.identify(500, aborted), { name: 'AbortError' });
+  assert.equal(f.port.writes.length, 0);
+
+  const controller = new AbortController();
+  const identifying = f.session.identify(500, controller.signal);
+  const rejected = assert.rejects(identifying, { name: 'AbortError' });
+  await assert.rejects(f.session.identify(500), /上一条/);
+  await tick();
+  controller.abort();
+  await rejected;
+  assert.equal(f.session.isOpen, true);
+  await f.send(8, identityPayload());
+  f.port.onWrite = async () => {
+    f.port.push(frame(8, identityPayload('SECOND', 'SECOND-CODE')));
+  };
+  const next = f.session.identify(500);
+  assert.deepEqual(await next, { model: 'SECOND', code: 'SECOND-CODE' });
+});
+
+test('identity removes abort listeners on success, timeout and cancellation', async (t) => {
+  const f = await fixture(t);
+  for (const outcome of ['success', 'timeout', 'abort']) {
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const add = signal.addEventListener.bind(signal);
+    const remove = signal.removeEventListener.bind(signal);
+    let listeners = 0;
+    signal.addEventListener = (...args) => { listeners += 1; add(...args); };
+    signal.removeEventListener = (...args) => { listeners -= 1; remove(...args); };
+    const identifying = f.session.identify(outcome === 'timeout' ? 15 : 500, signal);
+    const completed = outcome === 'success'
+      ? identifying
+      : assert.rejects(identifying, outcome === 'timeout'
+          ? BatteryIdentityTimeoutError
+          : { name: 'AbortError' });
+    await tick();
+    assert.equal(listeners, 1);
+    if (outcome === 'success') await f.send(8, identityPayload());
+    if (outcome === 'abort') controller.abort();
+    await completed;
+    assert.equal(listeners, 0);
+  }
+});
+
+test('cancelled and timed-out identities in the command queue never write later', async (t) => {
+  for (const outcome of ['abort', 'timeout']) {
+    const port = new MockPort();
+    let releaseWrite;
+    port.onWrite = () => new Promise((resolve) => { releaseWrite = resolve; });
+    const f = await fixture(t, port);
+    const history = f.session.requestHistory();
+    await tick();
+    const controller = new AbortController();
+    const identifying = f.session.identify(outcome === 'timeout' ? 15 : 500, controller.signal);
+    const rejected = assert.rejects(identifying, outcome === 'timeout'
+      ? BatteryIdentityTimeoutError
+      : { name: 'AbortError' });
+    if (outcome === 'abort') controller.abort();
+    await rejected;
+    releaseWrite();
+    await history;
+    await tick();
+    assert.deepEqual(f.port.writes.map((bytes) => bytes[2]), [0x0a]);
+    assert.equal(f.state.historyStatus, 'receiving');
+  }
+});
+
+test('identity ignores model responses while its read command is still queued', async (t) => {
+  const port = new MockPort();
+  let releaseWrite;
+  port.onWrite = (bytes) => bytes[2] === 0x0a
+    ? new Promise((resolve) => { releaseWrite = resolve; })
+    : Promise.resolve(port.push(frame(8, identityPayload('AFTER', 'COMMAND'))));
+  const f = await fixture(t, port);
+  const history = f.session.requestHistory();
+  await tick();
+  let resolved = false;
+  const identifying = f.session.identify(500).then((identity) => {
+    resolved = true;
+    return identity;
+  });
+  await f.send(8, identityPayload('BEFORE', 'COMMAND'));
+  assert.equal(resolved, false);
+  releaseWrite();
+  await history;
+  assert.deepEqual(await identifying, { model: 'AFTER', code: 'COMMAND' });
+});
+
+test('identity close rejects its waiter, suppresses late replies and releases locks once', async (t) => {
+  const f = await fixture(t);
+  const identifying = f.session.identify(500);
+  const rejected = assert.rejects(identifying, /串口已关闭/);
+  await tick();
+  const count = f.updates.length;
+  const closing = f.session.close();
+  assert.equal(f.session.isOpen, false);
+  await Promise.all([closing, rejected]);
+  f.port.push(frame(8, identityPayload()));
+  await tick();
+  assert.equal(f.updates.length, count);
+  assert.equal(f.port.readsReleased, 1);
+  assert.equal(f.port.writesReleased, 1);
+  assert.equal(f.port.closeCount, 1);
+  await assert.rejects(f.session.identify(500), /请先连接/);
+});
+
+test('EOF and read failure reject identity and close all serial resources', async (t) => {
+  for (const error of [undefined, new Error('identity read failed')]) {
+    const f = await fixture(t);
+    const identifying = f.session.identify(500);
+    const rejected = assert.rejects(identifying, error ? /identity read failed/ : /设备已断开/);
+    await tick();
+    f.port.finish(error);
+    await rejected;
+    await tick();
+    assert.equal(f.session.isOpen, false);
+    assert.equal(f.disconnects, 1);
+    assert.equal(f.port.readsReleased, 1);
+    assert.equal(f.port.writesReleased, 1);
+    assert.equal(f.port.closeCount, 1);
+  }
+});
+
+test('identity write failure cannot confirm a device even if a valid reply arrives during write', async (t) => {
+  for (const withReply of [false, true]) {
+    const port = new MockPort();
+    port.onWrite = async () => {
+      if (withReply) {
+        port.push(frame(8, identityPayload()));
+        await tick();
+      }
+      throw new Error('identity write failed');
+    };
+    const f = await fixture(t, port);
+    await assert.rejects(f.session.identify(500), /identity write failed/);
+    await tick();
+    assert.equal(f.session.isOpen, false);
+    assert.equal(f.disconnects, 1);
+    assert.equal(f.port.closeCount, 1);
+  }
+});
+
+function iapOuter(payload, broken = false) {
+  const bytes = data([0xaa, 0x55, 0x80, ...u16(payload.length), ...payload, 0]);
+  bytes[bytes.length - 1] = crc8(bytes.subarray(2, -1)) ^ (broken ? 1 : 0);
+  return bytes;
+}
+
+function ntcOuter(command) {
+  // 最短身份帧恰好占据 NTC 返回帧的后 10 字节；其外层 CRC 无效也必须整帧隔离。
+  return data([0xaa, command, ...frame(8, identityPayload('A', 'B'))]);
+}
+
+test('IAP and NTC outer boundaries isolate nested battery identity even when foreign CRC is invalid', () => {
+  const nested = frame(8, identityPayload('A', 'B'));
+  const outerFrames = [
+    iapOuter(nested),
+    iapOuter(nested, true),
+    iapOuter(data([...nested, ...nested])),
+    ntcOuter(0x81),
+    ntcOuter(0x82),
+  ];
+  for (const outer of outerFrames) {
+    for (const size of [1, 2, 7, outer.length]) {
+      const received = [];
+      const parser = new BatteryFrameParser((command, payload) => received.push([command, [...payload]]));
+      const stream = data([...outer, ...frame(0x88, identityPayload('REAL', 'CODE'))]);
+      for (let offset = 0; offset < stream.length; offset += size)
+        parser.push(stream.slice(offset, offset + size));
+      assert.deepEqual(received, [[8, identityPayload('REAL', 'CODE')]]);
+    }
+  }
+});
+
+test('identity preserves partially received foreign and battery outer boundaries across its request', async (t) => {
+  const nested = frame(8, identityPayload('A', 'B'));
+  const record = frame(0x0a, [1, ...nested, 0, 0, 0, 0, 0]);
+  const damagedRecord = record.slice();
+  damagedRecord[damagedRecord.length - 1] ^= 1;
+  for (const [outer, split] of [
+    [iapOuter(nested), 5],
+    [iapOuter(nested, true), 5],
+    [ntcOuter(0x81), 2],
+    [ntcOuter(0x82), 2],
+    [record, 6],
+    [damagedRecord, 6],
+  ]) {
+    const f = await fixture(t);
+    f.port.push(outer.slice(0, split));
+    await tick();
+    let resolved = false;
+    const identifying = f.session.identify(500).then((identity) => {
+      resolved = true;
+      return identity;
+    });
+    await tick();
+    f.port.push(outer.slice(split));
+    await tick();
+    assert.equal(resolved, false);
+    await f.send(8, identityPayload('REAL', 'CODE'));
+    assert.deepEqual(await identifying, { model: 'REAL', code: 'CODE' });
+  }
+});
+
+test('oversized IAP length resynchronizes without blocking legitimate battery identity', () => {
+  const received = [];
+  const parser = new BatteryFrameParser((command, payload) => received.push([command, [...payload]]));
+  parser.push(data([0xaa, 0x55, 0x08, ...u16(129), ...frame(8, identityPayload())]));
+  assert.deepEqual(received, [[8, identityPayload()]]);
 });
