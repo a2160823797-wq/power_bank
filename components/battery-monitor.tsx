@@ -14,8 +14,16 @@ import {
 import { CircleAlert, Loader2 } from 'lucide-react';
 import {
   BatterySerialSession,
+  BatteryIdentityTimeoutError,
   createBatteryState,
 } from '@/lib/battery-protocol';
+import {
+  discoverBatteryDevice,
+  connectSelectedBatteryDevice,
+  BatteryDeviceSelectionError,
+  BatteryPortReleaseError,
+  type BatteryConnectionCallbacks,
+} from '@/lib/battery-connection';
 import type { SerialApi } from '@/lib/iap-protocol';
 import { useLanguage } from '@/lib/language';
 import { localizeProtocolMessage } from '@/lib/protocol-messages';
@@ -49,6 +57,7 @@ const messages = {
     retryDisconnect: 'Retry Disconnect',
     disconnect: 'Disconnect',
     connect: 'Connect Device',
+    select: 'Select Device',
     unsupported:
       'This browser does not support serial connections. Please use desktop Chrome or Edge.',
     liveMetrics: 'Live Battery Data',
@@ -89,6 +98,7 @@ const messages = {
     retryDisconnect: '重试断开',
     disconnect: '断开连接',
     connect: '连接设备',
+    select: '选择设备',
     unsupported: '当前浏览器不支持串口连接，请使用桌面版 Chrome 或 Edge。',
     liveMetrics: '电池实时参数',
     totalVoltage: '电池总电压',
@@ -174,10 +184,12 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
     const [battery, setBattery] = useState(createBatteryState);
     const [connection, setConnection] = useState<Connection>('disconnected');
     const [error, setError] = useState('');
+    const [selectionRequired, setSelectionRequired] = useState(false);
     const mountedRef = useRef(true);
     const busyRef = useRef(false);
     const sessionRef = useRef<BatterySerialSession | null>(null);
     const connectPromiseRef = useRef<Promise<void> | null>(null);
+    const connectControllerRef = useRef<AbortController | null>(null);
     const closePromiseRef = useRef<Promise<void> | null>(null);
 
     const setConnectionBusy = useCallback(
@@ -192,6 +204,7 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
+        connectControllerRef.current?.abort();
         const session = sessionRef.current;
         sessionRef.current = null;
         void session?.close().catch(() => undefined);
@@ -245,27 +258,24 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
       setConnectionBusy(true);
       setConnection('connecting');
       setError('');
+      const controller = new AbortController();
+      connectControllerRef.current = controller;
       const operation = (async () => {
         let session: BatterySerialSession | null = null;
         try {
           const serial = (navigator as Navigator & { serial: SerialApi })
             .serial;
-          let port;
-          if (automatic) {
-            port = await getSavedSerialPort(serial, LAST_PORT_KEY);
-            if (!port) return;
-          } else {
-            port = await serial.requestPort();
-          }
+          let selectedPort = !automatic && selectionRequired
+            ? await serial.requestPort()
+            : null;
           if (!mountedRef.current) return;
-          setBattery(createBatteryState());
-          session = new BatterySerialSession(port, {
-            onData(state) {
-              if (mountedRef.current && sessionRef.current === session)
+          const callbacks: BatteryConnectionCallbacks = {
+            onData(candidate, state) {
+              if (mountedRef.current && sessionRef.current === candidate)
                 setBattery(state);
             },
-            onDisconnect() {
-              if (sessionRef.current !== session) return;
+            onDisconnect(candidate) {
+              if (sessionRef.current !== candidate) return;
               sessionRef.current = null;
               if (mountedRef.current) {
                 setConnection('disconnected');
@@ -276,23 +286,53 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
                 );
               }
             },
-            onError(message) {
-              if (mountedRef.current && sessionRef.current === session)
+            onError(candidate, message) {
+              if (mountedRef.current && sessionRef.current === candidate)
                 setError(message);
             },
-          });
+          };
+          let result;
+          if (selectedPort) {
+            result = await connectSelectedBatteryDevice(selectedPort, controller.signal, callbacks);
+          } else {
+            const ports = await serial.getPorts();
+            const savedPort = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
+            if (automatic && !savedPort) return;
+            if (!ports.length && !automatic) {
+              selectedPort = await serial.requestPort();
+              result = await connectSelectedBatteryDevice(selectedPort, controller.signal, callbacks);
+            } else {
+              result = await discoverBatteryDevice(ports, savedPort, controller.signal, callbacks);
+            }
+          }
+          if (!result) {
+            if (mountedRef.current) {
+              setSelectionRequired(true);
+              setError('未找到可用的电池设备，请点击“选择设备”连接');
+            }
+            return;
+          }
+          session = result.session;
           sessionRef.current = session;
-          await session.open();
           if (!mountedRef.current || sessionRef.current !== session) {
             await session.close();
             return;
           }
+          if (!session.isOpen) throw new Error('设备已断开连接');
+          setSelectionRequired(false);
+          setBattery(createBatteryState());
           setConnection('connected');
-          rememberSerialPort(LAST_PORT_KEY, port);
+          rememberSerialPort(LAST_PORT_KEY, result.port);
           await session.requestSnapshot();
         } catch (reason) {
           let releaseFailed = false;
-          if (session) {
+          let message = errorMessage(reason, '串口连接失败');
+          if (reason instanceof BatteryPortReleaseError) {
+            session = reason.session;
+            sessionRef.current = session;
+            releaseFailed = true;
+            message = '无法释放串口，请重试断开连接';
+          } else if (session) {
             try {
               await session.close();
             } catch (closeReason) {
@@ -306,6 +346,15 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
           if (!releaseFailed && sessionRef.current === session)
             sessionRef.current = null;
           if (mountedRef.current) {
+            if (reason instanceof BatteryDeviceSelectionError) {
+              setSelectionRequired(true);
+              message = '找到多台电池设备，请点击“选择设备”确认';
+            } else if (reason instanceof BatteryIdentityTimeoutError) {
+              setSelectionRequired(true);
+              message = '无法识别电池设备，请确认设备连接后重试';
+            } else if (!automatic && reason instanceof DOMException && reason.name === 'SecurityError') {
+              setSelectionRequired(true);
+            }
             setConnection(releaseFailed ? 'release-error' : 'disconnected');
             setBattery((current) =>
               current.historyStatus === 'receiving'
@@ -316,12 +365,14 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
               !releaseFailed &&
               !(
                 reason instanceof DOMException &&
-                reason.name === 'NotFoundError'
+                (reason.name === 'NotFoundError' || reason.name === 'AbortError')
               )
             )
-              setError(errorMessage(reason, '串口连接失败'));
+              setError(message);
+            else if (reason instanceof BatteryPortReleaseError) setError(message);
           }
         } finally {
+          if (connectControllerRef.current === controller) connectControllerRef.current = null;
           if (mountedRef.current && !sessionRef.current)
             setConnection('disconnected');
           setConnectionBusy(false);
@@ -397,7 +448,9 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
                     ? text.retryDisconnect
                     : connected
                       ? text.disconnect
-                      : text.connect}
+                      : selectionRequired
+                        ? text.select
+                        : text.connect}
             </button>
           </div>
         </section>

@@ -81,6 +81,9 @@ const englishMessages = new Map<string, string>([
     'Unable to release the serial port. Please try disconnecting again',
   ],
   ['串口连接失败', 'Unable to connect to the serial port'],
+  ['未找到可用的电池设备，请点击“选择设备”连接', 'No compatible battery device found. Click Select Device to connect.'],
+  ['找到多台电池设备，请点击“选择设备”确认', 'Multiple battery devices found. Click Select Device to choose.'],
+  ['无法识别电池设备，请确认设备连接后重试', 'Battery device not recognized. Check the connection and try again.'],
 ]);
 
 function englishPacketLabel(label: string) {
