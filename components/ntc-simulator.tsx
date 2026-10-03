@@ -193,45 +193,49 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
           </p>
         )}
         {message && <output className="ntc-alert">{message}</output>}
-        <section className="ntc-panel ntc-setpoint">
-          <div className="ntc-temperature">
-            <output htmlFor="ntc-temperature-slider">
-              {temperature}
-              <small>℃</small>
-            </output>
-          </div>
-          <input
-            id="ntc-temperature-slider"
-            className="ntc-slider"
-            type="range"
-            min="-25"
-            max="125"
-            step="1"
-            value={temperature}
-            aria-label={t('设定温度', 'Set temperature')}
-            onChange={(e) => setTemperature(Number(e.currentTarget.value))}
-            onPointerDown={(e) =>
-              e.currentTarget.setPointerCapture(e.pointerId)
-            }
-            onPointerUp={(e) => sendTemperature(Number(e.currentTarget.value))}
-            onKeyUp={(e) => {
-              if (
-                [
-                  'ArrowLeft',
-                  'ArrowRight',
-                  'ArrowUp',
-                  'ArrowDown',
-                  'Home',
-                  'End',
-                  'PageUp',
-                  'PageDown',
-                ].includes(e.key)
-              ) {
-                sendTemperature(Number(e.currentTarget.value));
+        {connected && (
+          <section className="ntc-panel ntc-setpoint">
+            <div className="ntc-temperature">
+              <output htmlFor="ntc-temperature-slider">
+                {temperature}
+                <small>℃</small>
+              </output>
+            </div>
+            <input
+              id="ntc-temperature-slider"
+              className="ntc-slider"
+              type="range"
+              min="-25"
+              max="125"
+              step="1"
+              value={temperature}
+              aria-label={t('设定温度', 'Set temperature')}
+              onChange={(e) => setTemperature(Number(e.currentTarget.value))}
+              onPointerDown={(e) =>
+                e.currentTarget.setPointerCapture(e.pointerId)
               }
-            }}
-          />
-        </section>
+              onPointerUp={(e) =>
+                sendTemperature(Number(e.currentTarget.value))
+              }
+              onKeyUp={(e) => {
+                if (
+                  [
+                    'ArrowLeft',
+                    'ArrowRight',
+                    'ArrowUp',
+                    'ArrowDown',
+                    'Home',
+                    'End',
+                    'PageUp',
+                    'PageDown',
+                  ].includes(e.key)
+                ) {
+                  sendTemperature(Number(e.currentTarget.value));
+                }
+              }}
+            />
+          </section>
+        )}
       </section>
     );
   },
