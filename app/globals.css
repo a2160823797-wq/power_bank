@@ -2,6 +2,7 @@
 @import 'tw-animate-css';
 @import 'shadcn/tailwind.css';
 @import './battery.css';
+@import './ntc.css';
 
 @custom-variant dark (&:is(.dark *));
 

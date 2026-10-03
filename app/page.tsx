@@ -20,6 +20,9 @@ import BatteryMonitor, {
 } from '@/components/battery-monitor';
 import { LanguageProvider, useLanguage } from '@/lib/language';
 import { localizeProtocolMessage } from '@/lib/protocol-messages';
+import NtcSimulator, {
+  type NtcSimulatorHandle,
+} from '@/components/ntc-simulator';
 
 type Stage =
   | 'idle'
@@ -37,6 +40,7 @@ const messages = {
     navigation: 'Features',
     language: 'Language',
     battery: 'Battery Monitor',
+    ntc: 'Digital Potentiometer',
     upgrade: 'Firmware Update',
     chooseFirmware: 'Choose firmware',
     replaceFirmware: 'Replace firmware',
@@ -81,6 +85,7 @@ const messages = {
     navigation: '功能导航',
     language: '语言',
     battery: '电池监测',
+    ntc: '数字电位器',
     upgrade: '固件升级',
     chooseFirmware: '选择固件',
     replaceFirmware: '更换固件',
@@ -146,12 +151,13 @@ export default function Home() {
 function Workspace() {
   const { language, setLanguage } = useLanguage();
   const t = messages[language];
-  const [view, setView] = useState<'battery' | 'upgrade'>('battery');
+  const [view, setView] = useState<'battery' | 'ntc' | 'upgrade'>('battery');
   const [switchingView, setSwitchingView] = useState(false);
   const [monitorBusy, setMonitorBusy] = useState(false);
   const monitorBusyRef = useRef(false);
   const switchingViewRef = useRef(false);
   const monitorRef = useRef<BatteryMonitorHandle>(null);
+  const ntcRef = useRef<NtcSimulatorHandle>(null);
   const autoConnectMonitorRef = useRef(true);
   const [running, setRunning] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
@@ -289,7 +295,7 @@ function Workspace() {
     await sessionRef.current?.cancel();
   }
 
-  async function changeView(nextView: 'battery' | 'upgrade') {
+  async function changeView(nextView: 'battery' | 'ntc' | 'upgrade') {
     if (
       view === nextView ||
       runningRef.current ||
@@ -301,6 +307,7 @@ function Workspace() {
     setSwitchingView(true);
     try {
       await monitorRef.current?.disconnect();
+      await ntcRef.current?.disconnect();
       autoConnectMonitorRef.current = false;
       setView(nextView);
     } catch {
@@ -420,6 +427,14 @@ function Workspace() {
             </button>
             <button
               type="button"
+              aria-pressed={view === 'ntc'}
+              disabled={running || monitorBusy || switchingView}
+              onClick={() => void changeView('ntc')}
+            >
+              {t.ntc}
+            </button>
+            <button
+              type="button"
               aria-pressed={view === 'upgrade'}
               disabled={running || monitorBusy || switchingView}
               onClick={() => void changeView('upgrade')}
@@ -461,6 +476,16 @@ function Workspace() {
           }}
         />
       )}
+      <div className="ntc-workspace" hidden={view !== 'ntc'}>
+        <NtcSimulator
+          ref={ntcRef}
+          serialSupported={serialSupported}
+          onConnectionBusyChange={(value) => {
+            monitorBusyRef.current = value;
+            setMonitorBusy(value);
+          }}
+        />
+      </div>
       {view === 'upgrade' && (
         <section className="updater-content" aria-label={t.upgrade}>
           <input
