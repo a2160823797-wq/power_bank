@@ -6,6 +6,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "test:shared-serial": "node --test scripts/test-shared-serial.mjs",
     "test:ntc": "node --test scripts/test-ntc.mjs",
     "test:ntc-connection": "node --test scripts/test-ntc-connection.mjs",
     "test:battery": "node --test scripts/test-battery.mjs",
