@@ -404,11 +404,11 @@ export class NtcSerialSession {
     return reply;
   }
 
-  close(): Promise<void> {
+  close(reason: Error = new Error('串口已断开')): Promise<void> {
     if (this.closeTask) return this.closeTask;
     if (this.state === 'closed') return Promise.resolve();
     this.state = 'closing';
-    this.pending?.reject(new Error('串口已断开'));
+    this.pending?.reject(reason);
     const task = (async () => {
       try {
         await this.openTask?.catch(() => {});
