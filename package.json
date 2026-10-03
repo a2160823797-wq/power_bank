@@ -9,6 +9,7 @@
     "test:ntc": "node --test scripts/test-ntc.mjs",
     "test:ntc-connection": "node --test scripts/test-ntc-connection.mjs",
     "test:battery": "node --test scripts/test-battery.mjs",
+    "test:battery-connection": "node --test scripts/test-battery-connection.mjs",
     "test:iap": "node --test scripts/test-iap.mjs",
     "dev": "vinext dev",
     "build": "vinext build",
