@@ -10,9 +10,11 @@ const source = stripTypeScriptTypes(
 const {
   crc8,
   encodeSetTemperature,
+  encodeIdentify,
   NtcFrameParser,
   NtcSerialSession,
   NtcTimeoutError,
+  NtcIdentityTimeoutError,
   statusText,
 } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
@@ -32,6 +34,12 @@ function replyFrame(temperature, resistanceOhms = 10000, code = 102, status = 0)
   view.setUint32(4, resistanceOhms, true);
   view.setUint16(8, code, true);
   frame[10] = status;
+  frame[11] = crc8(frame.subarray(0, 11));
+  return frame;
+}
+
+function identityFrame(nonce) {
+  const frame = Uint8Array.from([0xaa, 0x82, 0x4e, 0x54, 0x43, 0x31, 1, 0, nonce & 0xff, nonce >> 8, 0, 0]);
   frame[11] = crc8(frame.subarray(0, 11));
   return frame;
 }
@@ -525,4 +533,88 @@ test('blocked local storage preserves manual connection and suppresses automatic
   const port = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
   assert.doesNotThrow(() => rememberSerialPort('ntc', port));
   assert.equal(await getSavedSerialPort(automaticSerial([port]), 'ntc'), null);
+});
+
+test('identity query uses a separate command with a little-endian challenge and CRC', () => {
+  const frame = encodeIdentify(0x91ab);
+  assert.deepEqual([...frame.subarray(0, 4)], [0xaa, 2, 0xab, 0x91]);
+  assert.equal(frame[4], crc8(frame.subarray(0, 4)));
+});
+
+test('identity parser preserves every split boundary and keeps temperature replies separate', () => {
+  const frame = identityFrame(0x91ab);
+  for (let split = 1; split < frame.length; split += 1) {
+    const identities = [];
+    const parser = new NtcFrameParser(() => {}, (reply) => identities.push(reply));
+    assert.deepEqual(parser.push(frame.subarray(0, split)), []);
+    assert.equal(identities.length, 0);
+    assert.equal(parser.push(Uint8Array.from([...frame.subarray(split), ...replyFrame(25)]))[0].temperature, 25);
+    assert.deepEqual(identities, [{ nonce: 0x91ab, major: 1, minor: 0 }]);
+  }
+});
+
+test('identity rejects bad CRC, signature, version and status, and ignores battery/IAP payloads', () => {
+  const identities = [];
+  const parser = new NtcFrameParser(() => {}, (reply) => identities.push(reply));
+  const corrupt = identityFrame(1);
+  corrupt[11] ^= 1;
+  parser.push(corrupt);
+  for (const offset of [2, 3, 4, 5, 6, 7, 10]) {
+    const frame = identityFrame(1);
+    frame[offset] ^= 1;
+    frame[11] = crc8(frame.subarray(0, 11));
+    parser.push(frame);
+  }
+  for (const channel of [0xbb, 0x55]) parser.push(outerFrame(channel, identityFrame(1)));
+  assert.equal(identities.length, 0);
+  parser.push(identityFrame(2));
+  assert.equal(identities[0].nonce, 2);
+});
+
+test('identification accepts only its challenge and never transmits a temperature setting', async () => {
+  const port = new MockPort((bytes, device) => {
+    assert.equal(bytes[1], 2);
+    const nonce = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(2, true);
+    device.push(replyFrame(25));
+    device.push(identityFrame(nonce ^ 1));
+    const frame = identityFrame(nonce);
+    device.push(frame.subarray(0, 3));
+    device.push(frame.subarray(3));
+  });
+  const { session } = makeSession(port);
+  await session.open();
+  const identity = await session.identify(100);
+  assert.equal(identity.major, 1);
+  assert.equal(port.writes.length, 1);
+  await session.close();
+});
+
+test('normal temperature feedback and wrong identity responses cannot identify a device', async () => {
+  const port = new MockPort((bytes, device) => {
+    const nonce = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(2, true);
+    device.push(replyFrame(25));
+    const frame = identityFrame(nonce);
+    frame[11] ^= 1;
+    device.push(frame);
+    device.push(identityFrame(nonce ^ 1));
+  });
+  const { session } = makeSession(port);
+  await session.open();
+  await assert.rejects(session.identify(10), NtcIdentityTimeoutError);
+  await session.close();
+});
+
+test('identification shares command ownership and supports immediate cancellation', async () => {
+  const port = new MockPort();
+  const { session } = makeSession(port);
+  await session.open();
+  const controller = new AbortController();
+  const pending = assert.rejects(session.identify(60000, controller.signal), { name: 'AbortError' });
+  await assert.rejects(session.setTemperature(25, 100), /尚未结束/);
+  controller.abort();
+  await pending;
+  const writes = port.writes.length;
+  await assert.rejects(session.identify(100, controller.signal), { name: 'AbortError' });
+  assert.equal(port.writes.length, writes);
+  await session.close();
 });
