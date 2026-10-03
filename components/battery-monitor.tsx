@@ -2,91 +2,46 @@
 
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
-import { useLanguage } from '@/lib/language';
-import { localizeProtocolMessage } from '@/lib/protocol-messages';
 
-const messages = {
-  en: {
-    monitoring: 'Battery Monitoring',
-    serialConnection: 'Serial Connection',
-    lastReport: 'Last report: ',
-    connecting: 'Connecting',
-    disconnecting: 'Disconnecting',
-    retryDisconnect: 'Retry Disconnect',
-    disconnect: 'Disconnect',
-    connect: 'Connect Device',
-    select: 'Select Device',
-    unsupported:
-      'This browser does not support serial connections. Please use desktop Chrome or Edge.',
-    liveMetrics: 'Live Battery Data',
-    totalVoltage: 'Battery Voltage',
-    temperature: 'Battery Temperature',
-    cellVoltages: 'Cell Voltages',
-    cellCount: (count: number) => `${count} cells in series`,
-    cell: (index: number) => `Cell ${index}`,
-    cellInfo: 'Cell Information',
-    model: 'Model',
-    code: 'Code',
-    history: 'Fault History',
-    noRecords: 'No Fault Records',
-    historyRecords: 'Battery Fault Records',
-    overvoltage: 'Overcharge Voltage',
-    overtemperature: 'High Temperature',
-    batteryPack: 'Battery Pack',
-    recordValue: 'Recorded Value',
-    occurrenceTime: 'Occurrence Time',
-    timeUnavailable: 'Not Recorded',
-    noData: 'No data',
-    receiving: (count: number, total: number | null) =>
-      total === null
-        ? `Received ${count} records. Waiting for all records from the device.`
-        : `Received ${count} of ${total} records. Waiting for transfer to complete.`,
-    incomplete: (count: number, total: number | null) =>
-      total === null
-        ? `Received ${count} records. Reconnect the device to read the complete history.`
-        : `Received ${count} of ${total} expected records. Reconnect the device to read the complete history.`,
-    emptyHistory: 'Reading complete. The device reported 0 records.',
-  },
-  zh: {
-    monitoring: '电池监测',
-    serialConnection: '串口连接',
-    lastReport: '最近上报：',
-    connecting: '正在连接',
-    disconnecting: '正在断开',
-    retryDisconnect: '重试断开',
-    disconnect: '断开连接',
-    connect: '连接设备',
-    select: '选择设备',
-    unsupported: '当前浏览器不支持串口连接，请使用桌面版 Chrome 或 Edge。',
-    liveMetrics: '电池实时参数',
-    totalVoltage: '电池总电压',
-    temperature: '电池温度',
-    cellVoltages: '各串电压',
-    cellCount: (count: number) => `${count} 串电池`,
-    cell: (index: number) => `第 ${index} 串`,
-    cellInfo: '电芯信息',
-    model: '型号',
-    code: '编码',
-    history: '异常记录',
-    noRecords: '无异常记录',
-    historyRecords: '电池异常记录',
-    overvoltage: '过充电压',
-    overtemperature: '高温',
-    batteryPack: '整组电池',
-    recordValue: '记录数值',
-    occurrenceTime: '发生时间',
-    timeUnavailable: '未记录',
-    noData: '暂无数据',
-    receiving: (count: number, total: number | null) =>
-      total === null
-        ? `已收到 ${count} 条，等待设备返回完整记录。`
-        : `已收到 ${count} 条，共 ${total} 条，等待传输完成。`,
-    incomplete: (count: number, total: number | null) =>
-      total === null
-        ? `已收到 ${count} 条。请重新连接设备以读取完整记录。`
-        : `已收到 ${count} 条，预期 ${total} 条。请重新连接设备以读取完整记录。`,
-    emptyHistory: '本次读取已完成，设备报告的记录数为 0。',
-  },
+const text = {
+  monitoring: '电池监测',
+  serialConnection: '串口连接',
+  lastReport: '最近上报：',
+  connecting: '正在连接',
+  disconnecting: '正在断开',
+  retryDisconnect: '重试断开',
+  disconnect: '断开连接',
+  connect: '连接设备',
+  select: '选择设备',
+  unsupported: '当前浏览器不支持串口连接，请使用桌面版 Chrome 或 Edge。',
+  liveMetrics: '电池实时参数',
+  totalVoltage: '电池总电压',
+  temperature: '电池温度',
+  cellVoltages: '各串电压',
+  cellCount: (count: number) => `${count} 串电池`,
+  cell: (index: number) => `第 ${index} 串`,
+  cellInfo: '电芯信息',
+  model: '型号',
+  code: '编码',
+  history: '异常记录',
+  noRecords: '无异常记录',
+  historyRecords: '电池异常记录',
+  overvoltage: '过充电压',
+  overtemperature: '高温',
+  batteryPack: '整组电池',
+  recordValue: '记录数值',
+  occurrenceTime: '发生时间',
+  timeUnavailable: '未记录',
+  noData: '暂无数据',
+  receiving: (count: number, total: number | null) =>
+    total === null
+      ? `已收到 ${count} 条，等待设备返回完整记录。`
+      : `已收到 ${count} 条，共 ${total} 条，等待传输完成。`,
+  incomplete: (count: number, total: number | null) =>
+    total === null
+      ? `已收到 ${count} 条。请重新连接设备以读取完整记录。`
+      : `已收到 ${count} 条，预期 ${total} 条。请重新连接设备以读取完整记录。`,
+  emptyHistory: '本次读取已完成，设备报告的记录数为 0。',
 };
 
 const beijingReportTime = new Intl.DateTimeFormat('zh-CN', {
@@ -116,21 +71,14 @@ function formatVoltage(millivolts: number | null) {
 }
 
 function EmptyValue() {
-  const { language } = useLanguage();
   return (
-    <span
-      className="battery-empty-value"
-      role="img"
-      aria-label={messages[language].noData}
-    >
+    <span className="battery-empty-value" role="img" aria-label={text.noData}>
       —
     </span>
   );
 }
 
 export default function BatteryMonitor() {
-  const { language } = useLanguage();
-  const text = messages[language];
   const {
     serialSupported,
     connection,
@@ -206,7 +154,7 @@ export default function BatteryMonitor() {
       {error && (
         <p className="battery-message battery-message-error" role="alert">
           <CircleAlert />
-          {localizeProtocolMessage(error, language)}
+          {error}
         </p>
       )}
 
