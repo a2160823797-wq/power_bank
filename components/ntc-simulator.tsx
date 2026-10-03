@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Usb } from 'lucide-react';
 import type { SerialApi } from '@/lib/iap-protocol';
 import { NtcSerialSession, NtcTimeoutError } from '@/lib/ntc-protocol';
 import { useLanguage } from '@/lib/language';
@@ -176,8 +175,8 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
         {connectionBusy
           ? t('处理中…', 'Working…')
           : connected
-            ? t('断开串口', 'Disconnect')
-            : t('连接串口', 'Connect serial')}
+            ? t('断开设备', 'Disconnect device')
+            : t('连接设备', 'Connect device')}
       </button>
     );
     const feedback = (
@@ -201,16 +200,6 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
       >
         {!connected && (
           <div className="ntc-empty">
-            <div className="ntc-empty-icon" aria-hidden="true">
-              <Usb strokeWidth={1.5} />
-            </div>
-            <h2>{t('连接设备', 'Connect your device')}</h2>
-            <p>
-              {t(
-                '连接串口后即可设置温度',
-                'Connect a serial port to set the temperature',
-              )}
-            </p>
             {connectionButton}
             {feedback}
           </div>
