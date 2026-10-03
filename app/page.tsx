@@ -11,8 +11,6 @@ import {
 import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import { DEFAULT_CONFIG } from '@/lib/iap-config';
 import BatteryMonitor from '@/components/battery-monitor';
-import { LanguageProvider, useLanguage } from '@/lib/language';
-import { localizeProtocolMessage } from '@/lib/protocol-messages';
 import {
   getWorkspaceView,
   getServerWorkspaceView,
@@ -37,97 +35,48 @@ type Stage =
   | 'error';
 type FirmwareInfo = { file: File; data: Uint8Array; crc: number };
 
-const messages = {
-  en: {
-    navigation: 'Features',
-    language: 'Language',
-    battery: 'Battery Monitor',
-    ntc: 'Digital Potentiometer',
-    upgrade: 'Firmware Update',
-    chooseFirmware: 'Choose firmware',
-    replaceFirmware: 'Replace firmware',
-    readingFirmware: 'Reading firmware…',
-    pleaseWait: 'Please wait',
-    clickToReplace: ' · Click to replace',
-    dropFirmware: 'Or drop a .bin file here',
-    transferProgress: 'Firmware transfer progress',
-    received: 'The device has confirmed receipt.',
-    selectDevice: 'Select your device in the browser dialog.',
-    upgradeStopped: 'The update has stopped. See the message below.',
-    keepConnected: 'Keep the device connected until the update finishes.',
-    browserNote: 'Use Chrome or Edge on a computer to connect your device.',
-    hideDetails: 'Hide details',
-    showDetails: 'Show details',
-    nextUpgrade: 'Update again',
-    upgrading: 'Updating…',
-    startUpgrade: 'Start update',
-    cancelUpgrade: 'Cancel update',
-    statusToolTitle: 'Read firmware update status',
-    statusToolDescription:
-      'Read the selected firmware, device connection and update progress without changing the device state.',
-    deviceConnecting: 'Connecting',
-    deviceConnected: 'Connected',
-    deviceDisconnected: 'Disconnected',
-    cancelToolTitle: 'Cancel firmware update',
-    cancelToolDescription:
-      'Send a cancel frame to the device and stop the current update only when an update is running.',
-    noActiveUpgrade: 'No firmware update is currently running',
-    stages: {
-      idle: 'Waiting for firmware',
-      ready: 'Ready',
-      connecting: 'Connecting device',
-      preparing: 'Entering update mode',
-      writing: 'Transferring firmware',
-      verifying: 'Confirming receipt',
-      success: 'Update complete',
-      error: 'Update failed',
-    } satisfies Record<Stage, string>,
-  },
-  zh: {
-    navigation: '功能导航',
-    language: '语言',
-    battery: '电池监测',
-    ntc: '数字电位器',
-    upgrade: '固件升级',
-    chooseFirmware: '选择固件',
-    replaceFirmware: '更换固件',
-    readingFirmware: '正在读取固件…',
-    pleaseWait: '请稍候',
-    clickToReplace: ' · 点击更换',
-    dropFirmware: '也可将 .bin 文件拖到这里',
-    transferProgress: '固件传输进度',
-    received: '设备已确认接收完成。',
-    selectDevice: '请在浏览器弹窗中选择你的设备。',
-    upgradeStopped: '升级已停止，请查看下方提示。',
-    keepConnected: '请保持设备连接，等待升级完成。',
-    browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
-    hideDetails: '收起详情',
-    showDetails: '查看详情',
-    nextUpgrade: '下一次升级',
-    upgrading: '正在升级…',
-    startUpgrade: '一键升级',
-    cancelUpgrade: '取消升级',
-    statusToolTitle: '读取固件升级状态',
-    statusToolDescription:
-      '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
-    deviceConnecting: '正在握手',
-    deviceConnected: '已连接',
-    deviceDisconnected: '未连接',
-    cancelToolTitle: '取消固件升级',
-    cancelToolDescription:
-      '仅在升级正在进行时向设备发送取消帧，并停止当前升级。',
-    noActiveUpgrade: '当前没有正在进行的固件升级',
-    stages: {
-      idle: '等待固件',
-      ready: '准备就绪',
-      connecting: '连接设备',
-      preparing: '进入升级模式',
-      writing: '传输固件',
-      verifying: '确认接收完成',
-      success: '升级完成',
-      error: '升级失败',
-    } satisfies Record<Stage, string>,
-  },
+const t = {
+  navigation: '功能导航',
+  battery: '电池监测',
+  ntc: '数字电位器',
+  upgrade: '固件升级',
+  chooseFirmware: '选择固件',
+  replaceFirmware: '更换固件',
+  readingFirmware: '正在读取固件…',
+  pleaseWait: '请稍候',
+  clickToReplace: ' · 点击更换',
+  dropFirmware: '也可将 .bin 文件拖到这里',
+  transferProgress: '固件传输进度',
+  received: '设备已确认接收完成。',
+  selectDevice: '请在浏览器弹窗中选择你的设备。',
+  upgradeStopped: '升级已停止，请查看下方提示。',
+  keepConnected: '请保持设备连接，等待升级完成。',
+  browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
+  hideDetails: '收起详情',
+  showDetails: '查看详情',
+  nextUpgrade: '下一次升级',
+  upgrading: '正在升级…',
+  startUpgrade: '一键升级',
+  cancelUpgrade: '取消升级',
+  statusToolTitle: '读取固件升级状态',
+  statusToolDescription:
+    '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
+  deviceConnecting: '正在握手',
+  deviceConnected: '已连接',
+  deviceDisconnected: '未连接',
+  cancelToolTitle: '取消固件升级',
+  cancelToolDescription: '仅在升级正在进行时向设备发送取消帧，并停止当前升级。',
+  noActiveUpgrade: '当前没有正在进行的固件升级',
+  stages: {
+    idle: '等待固件',
+    ready: '准备就绪',
+    connecting: '连接设备',
+    preparing: '进入升级模式',
+    writing: '传输固件',
+    verifying: '确认接收完成',
+    success: '升级完成',
+    error: '升级失败',
+  } satisfies Record<Stage, string>,
 };
 
 function formatBytes(value: number) {
@@ -140,17 +89,13 @@ function formatHex(value: number) {
 
 export default function Home() {
   return (
-    <LanguageProvider>
-      <DeviceConnectionProvider>
-        <Workspace />
-      </DeviceConnectionProvider>
-    </LanguageProvider>
+    <DeviceConnectionProvider>
+      <Workspace />
+    </DeviceConnectionProvider>
   );
 }
 
 function Workspace() {
-  const { language, setLanguage } = useLanguage();
-  const t = messages[language];
   const view = useSyncExternalStore(
     subscribeWorkspaceView,
     getWorkspaceView,
@@ -364,7 +309,7 @@ function Workspace() {
       },
     });
     return () => lifecycle.abort();
-  }, [t]);
+  }, []);
 
   return (
     <main className="updater-shell">
@@ -420,27 +365,6 @@ function Workspace() {
               {t.upgrade}
             </button>
           </nav>
-          <fieldset className="language-switch">
-            <legend className="sr-only">{t.language}</legend>
-            <button
-              type="button"
-              lang="en"
-              aria-label="English"
-              aria-pressed={language === 'en'}
-              onClick={() => setLanguage('en')}
-            >
-              EN
-            </button>
-            <button
-              type="button"
-              lang="zh-CN"
-              aria-label="中文"
-              aria-pressed={language === 'zh'}
-              onClick={() => setLanguage('zh')}
-            >
-              中文
-            </button>
-          </fieldset>
         </div>
       </header>
       <div hidden={view !== 'battery'}>
@@ -542,7 +466,7 @@ function Workspace() {
           {displayedError && (
             <div className="error-message" role="alert">
               <CircleAlert aria-hidden="true" />
-              <p>{localizeProtocolMessage(displayedError, language)}</p>
+              <p>{displayedError}</p>
             </div>
           )}
           {serialSupported === false && (
@@ -562,9 +486,7 @@ function Workspace() {
               {logsExpanded && (
                 <div id="upgrade-logs" className="upgrade-logs">
                   {logs.map((entry, index) => (
-                    <p key={`${entry}-${index}`}>
-                      {localizeProtocolMessage(entry, language)}
-                    </p>
+                    <p key={`${entry}-${index}`}>{entry}</p>
                   ))}
                 </div>
               )}

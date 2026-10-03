@@ -16,11 +16,11 @@ const javascript = (await readFile(resolve(buildDirectory, 'app.js'), 'utf8'))
   .replaceAll('</script', '<\\/script');
 
 const html = `<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="PowerBank battery monitoring, AD5270 NTC simulator and firmware updates" />
+    <meta name="description" content="PowerBank 电池监测、数字电位器与固件升级" />
     <title>PowerBank</title>
     <style>${css}</style>
   </head>

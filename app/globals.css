@@ -162,26 +162,6 @@
     justify-content: flex-end;
     gap: 12px;
   }
-  .language-switch {
-    display: flex;
-    gap: 2px;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: #141416;
-  }
-  .language-switch button {
-    min-height: 36px;
-    padding: 6px 10px;
-    border-radius: 8px;
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    white-space: nowrap;
-  }
-  .language-switch button[aria-pressed='true'] {
-    color: var(--foreground);
-    background: var(--secondary);
-  }
   .workspace-nav button {
     min-height: 36px;
     padding: 6px 14px;
@@ -484,11 +464,6 @@
     grid-row: 2;
     justify-self: end;
   }
-  .language-switch {
-    grid-column: 2;
-    grid-row: 1;
-    justify-self: end;
-  }
 }
 
 @media (max-width: 520px) {
@@ -501,9 +476,6 @@
   .workspace-nav button {
     padding-inline: 10px;
     font-size: 0.75rem;
-  }
-  .language-switch button {
-    padding-inline: 8px;
   }
   .brand-wordmark {
     width: 118px;

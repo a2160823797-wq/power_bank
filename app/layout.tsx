@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'PowerBank',
-  description: 'PowerBank battery monitoring, AD5270 NTC simulator and firmware updates',
+  description: 'PowerBank 电池监测、数字电位器与固件升级',
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="zh-CN">
       <body className="antialiased">{children}</body>
     </html>
   );
