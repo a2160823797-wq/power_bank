@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { CircleAlert, Loader2, Plug, Unplug } from 'lucide-react';
+import { CircleAlert, Loader2 } from 'lucide-react';
 import {
   BatterySerialSession,
   createBatteryState,
@@ -406,12 +406,8 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
                 else void connect();
               }}
             >
-              {connectionBusy ? (
+              {connectionBusy && (
                 <Loader2 className="battery-spin" />
-              ) : connected || connection === 'release-error' ? (
-                <Unplug />
-              ) : (
-                <Plug />
               )}
               {connection === 'connecting'
                 ? text.connecting
@@ -549,10 +545,19 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
                       className="battery-record-value"
                       aria-label={text.recordValue}
                     >
-                      {record.type === 'overvoltage'
-                        ? (record.value / 1000).toFixed(3)
-                        : (record.value / 10).toFixed(1)}
-                      <span>{record.type === 'overvoltage' ? 'V' : '°C'}</span>
+                      <span className="battery-record-number">
+                        {record.type === 'overvoltage'
+                          ? (record.value / 1000).toFixed(3)
+                          : (record.value / 10).toFixed(1)}
+                      </span>
+                      <span className="battery-record-unit">
+                        <span className="battery-record-degree">
+                          {record.type === 'overvoltage' ? '' : '°'}
+                        </span>
+                        <span className="battery-record-symbol">
+                          {record.type === 'overvoltage' ? 'V' : 'C'}
+                        </span>
+                      </span>
                     </p>
                     <p
                       className="battery-record-time"

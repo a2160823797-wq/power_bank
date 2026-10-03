@@ -289,17 +289,26 @@
     font-size: 0.875rem;
   }
   .battery-record-value {
+    display: grid;
+    grid-template-columns: 6ch 1.2em;
+    align-items: baseline;
+    justify-content: center;
+    column-gap: 6px;
     font-size: 1.125rem;
     font-weight: 600;
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
-    text-align: center;
     white-space: nowrap;
   }
-  .battery-record-value > span {
-    margin-left: 6px;
+  .battery-record-number {
+    text-align: right;
+  }
+  .battery-record-unit {
+    display: grid;
+    grid-template-columns: 0.55em 1em;
+    align-items: baseline;
     font-size: 0.7em;
-    vertical-align: baseline;
+    text-align: left;
   }
   .battery-record-time {
     font-size: 1rem;
