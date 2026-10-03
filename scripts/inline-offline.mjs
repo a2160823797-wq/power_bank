@@ -20,7 +20,7 @@ const html = `<!doctype html>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="X202 serial interface for battery monitoring, fault history and firmware updates" />
+    <meta name="description" content="PowerBank battery monitoring, AD5270 NTC simulator and firmware updates" />
     <title>PowerBank</title>
     <style>${css}</style>
   </head>

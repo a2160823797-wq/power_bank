@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'PowerBank',
-  description: 'X202 serial interface for battery monitoring, fault history and firmware updates',
+  description: 'PowerBank battery monitoring, AD5270 NTC simulator and firmware updates',
 };
 
 export default function RootLayout({
