@@ -1,51 +1,9 @@
 'use client';
 
-import { getSavedSerialPort, rememberSerialPort } from '@/lib/serial-device';
-
-import {
-  forwardRef,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
 import { CircleAlert, Loader2 } from 'lucide-react';
-import {
-  BatterySerialSession,
-  BatteryIdentityTimeoutError,
-  createBatteryState,
-} from '@/lib/battery-protocol';
-import {
-  discoverBatteryDevice,
-  connectSelectedBatteryDevice,
-  BatteryDeviceSelectionError,
-  BatteryPortReleaseError,
-  type BatteryConnectionCallbacks,
-} from '@/lib/battery-connection';
-import type { SerialApi } from '@/lib/iap-protocol';
+import { useDeviceConnection } from '@/lib/device-connection-context';
 import { useLanguage } from '@/lib/language';
 import { localizeProtocolMessage } from '@/lib/protocol-messages';
-
-export interface BatteryMonitorHandle {
-  disconnect(): Promise<void>;
-}
-
-interface BatteryMonitorProps {
-  serialSupported: boolean | null;
-  autoConnect: boolean;
-  onConnectionBusyChange?: (busy: boolean) => void;
-}
-
-type Connection =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'disconnecting'
-  | 'release-error';
-
-const LAST_PORT_KEY = 'powerbank.last-serial-port';
 
 const messages = {
   en: {
@@ -170,443 +128,224 @@ function EmptyValue() {
   );
 }
 
-function errorMessage(reason: unknown, fallback: string) {
-  return reason instanceof Error ? reason.message : fallback;
-}
+export default function BatteryMonitor() {
+  const { language } = useLanguage();
+  const text = messages[language];
+  const {
+    serialSupported,
+    connection,
+    connectionBusy,
+    connected,
+    selectionRequired,
+    error,
+    battery,
+    connect,
+    disconnect,
+  } = useDeviceConnection();
+  const visibleCellCount = battery.cellCount ?? 0;
+  const showRecordCell = battery.cellCount !== 1;
+  const historyDescription = {
+    unread: '',
+    receiving: text.receiving(battery.records.length, battery.historyExpected),
+    incomplete: text.incomplete(
+      battery.records.length,
+      battery.historyExpected,
+    ),
+    complete: battery.records.length === 0 ? text.emptyHistory : '',
+  }[battery.historyStatus];
 
-const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
-  function BatteryMonitor(
-    { serialSupported, autoConnect, onConnectionBusyChange },
-    ref,
-  ) {
-    const { language } = useLanguage();
-    const text = messages[language];
-    const [battery, setBattery] = useState(createBatteryState);
-    const [connection, setConnection] = useState<Connection>('disconnected');
-    const [error, setError] = useState('');
-    const [selectionRequired, setSelectionRequired] = useState(false);
-    const mountedRef = useRef(true);
-    const busyRef = useRef(false);
-    const sessionRef = useRef<BatterySerialSession | null>(null);
-    const connectPromiseRef = useRef<Promise<void> | null>(null);
-    const connectControllerRef = useRef<AbortController | null>(null);
-    const closePromiseRef = useRef<Promise<void> | null>(null);
+  return (
+    <section className="battery-content" aria-label={text.monitoring}>
+      <section
+        className="battery-connection"
+        aria-label={text.serialConnection}
+      >
+        <div className="battery-data-status" aria-live="polite">
+          <span>
+            {text.lastReport}
+            {battery.lastReceivedAt === null ? (
+              <EmptyValue />
+            ) : (
+              beijingReportTime.format(battery.lastReceivedAt)
+            )}
+          </span>
+        </div>
+        <div className="battery-actions">
+          <button
+            className={`battery-button ${connected || connection === 'release-error' ? 'battery-button-secondary' : 'battery-button-primary'}`}
+            type="button"
+            disabled={connectionBusy || !serialSupported}
+            onClick={() => {
+              if (connected || connection === 'release-error')
+                void disconnect().catch(() => undefined);
+              else void connect('battery');
+            }}
+          >
+            {connectionBusy && <Loader2 className="battery-spin" />}
+            {connection === 'connecting'
+              ? text.connecting
+              : connection === 'disconnecting'
+                ? text.disconnecting
+                : connection === 'release-error'
+                  ? text.retryDisconnect
+                  : connected
+                    ? text.disconnect
+                    : selectionRequired
+                      ? text.select
+                      : text.connect}
+          </button>
+        </div>
+      </section>
 
-    const setConnectionBusy = useCallback(
-      (busy: boolean) => {
-        busyRef.current = busy;
-        if (mountedRef.current) onConnectionBusyChange?.(busy);
-      },
-      [onConnectionBusyChange],
-    );
+      {serialSupported === false && (
+        <p className="battery-message" role="alert">
+          <CircleAlert />
+          {text.unsupported}
+        </p>
+      )}
+      {error && (
+        <p className="battery-message battery-message-error" role="alert">
+          <CircleAlert />
+          {localizeProtocolMessage(error, language)}
+        </p>
+      )}
 
-    useEffect(() => {
-      mountedRef.current = true;
-      return () => {
-        mountedRef.current = false;
-        connectControllerRef.current?.abort();
-        const session = sessionRef.current;
-        sessionRef.current = null;
-        void session?.close().catch(() => undefined);
-      };
-    }, []);
-
-    const disconnect = useCallback(async () => {
-      await connectPromiseRef.current;
-      if (closePromiseRef.current) return closePromiseRef.current;
-      const session = sessionRef.current;
-      if (!session) return;
-      setConnectionBusy(true);
-      if (mountedRef.current) {
-        setConnection('disconnecting');
-        setError('');
-      }
-      const operation = (async () => {
-        try {
-          await session.close();
-          if (sessionRef.current === session) sessionRef.current = null;
-          if (mountedRef.current) {
-            setConnection('disconnected');
-            setBattery((current) =>
-              current.historyStatus === 'receiving'
-                ? { ...current, historyStatus: 'incomplete' }
-                : current,
-            );
-          }
-        } catch (reason) {
-          if (mountedRef.current) {
-            setConnection('release-error');
-            setError(errorMessage(reason, '无法释放串口，请重试断开连接'));
-          }
-          throw reason;
-        } finally {
-          setConnectionBusy(false);
-        }
-      })();
-      closePromiseRef.current = operation;
-      try {
-        await operation;
-      } finally {
-        closePromiseRef.current = null;
-      }
-    }, [setConnectionBusy]);
-
-    useImperativeHandle(ref, () => ({ disconnect }), [disconnect]);
-
-    async function connect(automatic = false) {
-      if (busyRef.current || sessionRef.current || !serialSupported) return;
-      setConnectionBusy(true);
-      setConnection('connecting');
-      setError('');
-      const controller = new AbortController();
-      connectControllerRef.current = controller;
-      const operation = (async () => {
-        let session: BatterySerialSession | null = null;
-        try {
-          const serial = (navigator as Navigator & { serial: SerialApi })
-            .serial;
-          let selectedPort = !automatic && selectionRequired
-            ? await serial.requestPort()
-            : null;
-          if (!mountedRef.current) return;
-          const callbacks: BatteryConnectionCallbacks = {
-            onData(candidate, state) {
-              if (mountedRef.current && sessionRef.current === candidate)
-                setBattery(state);
-            },
-            onDisconnect(candidate) {
-              if (sessionRef.current !== candidate) return;
-              sessionRef.current = null;
-              if (mountedRef.current) {
-                setConnection('disconnected');
-                setBattery((current) =>
-                  current.historyStatus === 'receiving'
-                    ? { ...current, historyStatus: 'incomplete' }
-                    : current,
-                );
-              }
-            },
-            onError(candidate, message) {
-              if (mountedRef.current && sessionRef.current === candidate)
-                setError(message);
-            },
-          };
-          let result;
-          if (selectedPort) {
-            result = await connectSelectedBatteryDevice(selectedPort, controller.signal, callbacks);
-          } else {
-            const ports = await serial.getPorts();
-            const savedPort = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
-            if (automatic && !savedPort) return;
-            if (!ports.length && !automatic) {
-              selectedPort = await serial.requestPort();
-              result = await connectSelectedBatteryDevice(selectedPort, controller.signal, callbacks);
-            } else {
-              result = await discoverBatteryDevice(ports, savedPort, controller.signal, callbacks);
-            }
-          }
-          if (!result) {
-            if (mountedRef.current) {
-              setSelectionRequired(true);
-              setError('未找到可用的电池设备，请点击“选择设备”连接');
-            }
-            return;
-          }
-          session = result.session;
-          sessionRef.current = session;
-          if (!mountedRef.current || sessionRef.current !== session) {
-            await session.close();
-            return;
-          }
-          if (!session.isOpen) throw new Error('设备已断开连接');
-          setSelectionRequired(false);
-          setBattery(createBatteryState());
-          setConnection('connected');
-          rememberSerialPort(LAST_PORT_KEY, result.port);
-          await session.requestSnapshot();
-        } catch (reason) {
-          let releaseFailed = false;
-          let message = errorMessage(reason, '串口连接失败');
-          if (reason instanceof BatteryPortReleaseError) {
-            session = reason.session;
-            sessionRef.current = session;
-            releaseFailed = true;
-            message = '无法释放串口，请重试断开连接';
-          } else if (session) {
-            try {
-              await session.close();
-            } catch (closeReason) {
-              releaseFailed = true;
-              if (mountedRef.current)
-                setError(
-                  errorMessage(closeReason, '无法释放串口，请重试断开连接'),
-                );
-            }
-          }
-          if (!releaseFailed && sessionRef.current === session)
-            sessionRef.current = null;
-          if (mountedRef.current) {
-            if (reason instanceof BatteryDeviceSelectionError) {
-              setSelectionRequired(true);
-              message = '找到多台电池设备，请点击“选择设备”确认';
-            } else if (reason instanceof BatteryIdentityTimeoutError) {
-              setSelectionRequired(true);
-              message = '无法识别电池设备，请确认设备连接后重试';
-            } else if (!automatic && reason instanceof DOMException && reason.name === 'SecurityError') {
-              setSelectionRequired(true);
-            }
-            setConnection(releaseFailed ? 'release-error' : 'disconnected');
-            setBattery((current) =>
-              current.historyStatus === 'receiving'
-                ? { ...current, historyStatus: 'incomplete' }
-                : current,
-            );
-            if (
-              !releaseFailed &&
-              !(
-                reason instanceof DOMException &&
-                (reason.name === 'NotFoundError' || reason.name === 'AbortError')
-              )
-            )
-              setError(message);
-            else if (reason instanceof BatteryPortReleaseError) setError(message);
-          }
-        } finally {
-          if (connectControllerRef.current === controller) connectControllerRef.current = null;
-          if (mountedRef.current && !sessionRef.current)
-            setConnection('disconnected');
-          setConnectionBusy(false);
-        }
-      })();
-      connectPromiseRef.current = operation;
-      await operation;
-      if (connectPromiseRef.current === operation)
-        connectPromiseRef.current = null;
-    }
-
-    const connectLastPort = useEffectEvent(() => {
-      void connect(true);
-    });
-
-    useEffect(() => {
-      if (serialSupported && autoConnect) connectLastPort();
-    }, [serialSupported, autoConnect]);
-
-    const connected = connection === 'connected';
-    const connectionBusy =
-      connection === 'connecting' || connection === 'disconnecting';
-    const visibleCellCount = battery.cellCount ?? 0;
-    const showRecordCell = battery.cellCount !== 1;
-    const historyDescription = {
-      unread: '',
-      receiving: text.receiving(
-        battery.records.length,
-        battery.historyExpected,
-      ),
-      incomplete: text.incomplete(
-        battery.records.length,
-        battery.historyExpected,
-      ),
-      complete: battery.records.length === 0 ? text.emptyHistory : '',
-    }[battery.historyStatus];
-
-    return (
-      <section className="battery-content" aria-label={text.monitoring}>
-        <section
-          className="battery-connection"
-          aria-label={text.serialConnection}
-        >
-          <div className="battery-data-status" aria-live="polite">
-            <span>
-              {text.lastReport}
-              {battery.lastReceivedAt === null ? (
-                <EmptyValue />
-              ) : (
-                beijingReportTime.format(battery.lastReceivedAt)
-              )}
-            </span>
-          </div>
-          <div className="battery-actions">
-            <button
-              className={`battery-button ${connected || connection === 'release-error' ? 'battery-button-secondary' : 'battery-button-primary'}`}
-              type="button"
-              disabled={connectionBusy || !serialSupported}
-              onClick={() => {
-                if (connected || connection === 'release-error')
-                  void disconnect().catch(() => undefined);
-                else void connect();
-              }}
-            >
-              {connectionBusy && (
-                <Loader2 className="battery-spin" />
-              )}
-              {connection === 'connecting'
-                ? text.connecting
-                : connection === 'disconnecting'
-                  ? text.disconnecting
-                  : connection === 'release-error'
-                    ? text.retryDisconnect
-                    : connected
-                      ? text.disconnect
-                      : selectionRequired
-                        ? text.select
-                        : text.connect}
-            </button>
-          </div>
-        </section>
-
-        {serialSupported === false && (
-          <p className="battery-message" role="alert">
-            <CircleAlert />
-            {text.unsupported}
+      <section className="battery-metrics" aria-label={text.liveMetrics}>
+        <div className="battery-metric">
+          <p className="battery-field-label">{text.totalVoltage}</p>
+          <p className="battery-metric-value">
+            {formatVoltage(battery.totalVoltageMv)}
+            <span>V</span>
           </p>
-        )}
-        {error && (
-          <p className="battery-message battery-message-error" role="alert">
-            <CircleAlert />
-            {localizeProtocolMessage(error, language)}
+        </div>
+        <div className="battery-metric">
+          <p className="battery-field-label">{text.temperature}</p>
+          <p className="battery-metric-value">
+            {battery.temperatureC === null ? (
+              <EmptyValue />
+            ) : (
+              battery.temperatureC.toFixed(1)
+            )}
+            <span>°C</span>
           </p>
-        )}
+        </div>
+      </section>
 
-        <section className="battery-metrics" aria-label={text.liveMetrics}>
-          <div className="battery-metric">
-            <p className="battery-field-label">{text.totalVoltage}</p>
-            <p className="battery-metric-value">
-              {formatVoltage(battery.totalVoltageMv)}
-              <span>V</span>
-            </p>
-          </div>
-          <div className="battery-metric">
-            <p className="battery-field-label">{text.temperature}</p>
-            <p className="battery-metric-value">
-              {battery.temperatureC === null ? (
-                <EmptyValue />
-              ) : (
-                battery.temperatureC.toFixed(1)
-              )}
-              <span>°C</span>
-            </p>
-          </div>
-        </section>
-
-        <div className="battery-details-grid">
-          {visibleCellCount > 1 && (
-            <section
-              className="battery-panel"
-              aria-labelledby="battery-cells-title"
-            >
-              <div className="battery-panel-heading">
-                <h2 id="battery-cells-title">{text.cellVoltages}</h2>
-                <span className="battery-section-note">
-                  {text.cellCount(visibleCellCount)}
-                </span>
-              </div>
-              <div className="battery-cell-grid">
-                {Array.from({ length: visibleCellCount }, (_, index) => (
-                  <div className="battery-cell" key={index}>
-                    <span>{text.cell(index + 1)}</span>
-                    <strong>
-                      {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
-                      <small>V</small>
-                    </strong>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
+      <div className="battery-details-grid">
+        {visibleCellCount > 1 && (
           <section
             className="battery-panel"
-            aria-labelledby="battery-identity-title"
+            aria-labelledby="battery-cells-title"
           >
             <div className="battery-panel-heading">
-              <h2 id="battery-identity-title">{text.cellInfo}</h2>
+              <h2 id="battery-cells-title">{text.cellVoltages}</h2>
+              <span className="battery-section-note">
+                {text.cellCount(visibleCellCount)}
+              </span>
             </div>
-            <dl className="battery-identity">
-              <div>
-                <dt>{text.model}</dt>
-                <dd>{battery.batteryModel || <EmptyValue />}</dd>
-              </div>
-              <div>
-                <dt>{text.code}</dt>
-                <dd>{battery.batteryCode || <EmptyValue />}</dd>
-              </div>
-            </dl>
+            <div className="battery-cell-grid">
+              {Array.from({ length: visibleCellCount }, (_, index) => (
+                <div className="battery-cell" key={index}>
+                  <span>{text.cell(index + 1)}</span>
+                  <strong>
+                    {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
+                    <small>V</small>
+                  </strong>
+                </div>
+              ))}
+            </div>
           </section>
-        </div>
+        )}
 
         <section
-          className="battery-panel battery-history"
-          aria-labelledby="battery-history-title"
+          className="battery-panel"
+          aria-labelledby="battery-identity-title"
         >
           <div className="battery-panel-heading">
-            <h2 id="battery-history-title">{text.history}</h2>
+            <h2 id="battery-identity-title">{text.cellInfo}</h2>
           </div>
-          {battery.records.length === 0 ? (
-            <div className="battery-history-empty" aria-live="polite">
-              {battery.historyStatus === 'complete' ? (
-                <h3>{text.noRecords}</h3>
-              ) : (
-                <EmptyValue />
-              )}
+          <dl className="battery-identity">
+            <div>
+              <dt>{text.model}</dt>
+              <dd>{battery.batteryModel || <EmptyValue />}</dd>
             </div>
-          ) : (
-            <>
-              {historyDescription && (
-                <p className="battery-history-description" aria-live="polite">
-                  {historyDescription}
-                </p>
-              )}
-              <ul className="battery-records" aria-label={text.historyRecords}>
-                {battery.records.map((record) => (
-                  <li key={record.id}>
-                    <div className="battery-record-heading">
-                      <h3>
-                        {record.type === 'overvoltage'
-                          ? text.overvoltage
-                          : text.overtemperature}
-                      </h3>
-                      {showRecordCell && (
-                        <span>
-                          {record.cell === 0
-                            ? text.batteryPack
-                            : text.cell(record.cell)}
-                        </span>
-                      )}
-                    </div>
-                    <p
-                      className="battery-record-value"
-                      aria-label={text.recordValue}
-                    >
-                      <span className="battery-record-number">
-                        {record.type === 'overvoltage'
-                          ? (record.value / 1000).toFixed(3)
-                          : (record.value / 10).toFixed(1)}
-                      </span>
-                      <span className="battery-record-unit">
-                        <span className="battery-record-degree">
-                          {record.type === 'overvoltage' ? '' : '°'}
-                        </span>
-                        <span className="battery-record-symbol">
-                          {record.type === 'overvoltage' ? 'V' : 'C'}
-                        </span>
-                      </span>
-                    </p>
-                    <p
-                      className="battery-record-time"
-                      aria-label={text.occurrenceTime}
-                    >
-                      {formatTime(record.timeUnixSeconds, text.timeUnavailable)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
+            <div>
+              <dt>{text.code}</dt>
+              <dd>{battery.batteryCode || <EmptyValue />}</dd>
+            </div>
+          </dl>
         </section>
-      </section>
-    );
-  },
-);
+      </div>
 
-export default BatteryMonitor;
+      <section
+        className="battery-panel battery-history"
+        aria-labelledby="battery-history-title"
+      >
+        <div className="battery-panel-heading">
+          <h2 id="battery-history-title">{text.history}</h2>
+        </div>
+        {battery.records.length === 0 ? (
+          <div className="battery-history-empty" aria-live="polite">
+            {battery.historyStatus === 'complete' ? (
+              <h3>{text.noRecords}</h3>
+            ) : (
+              <EmptyValue />
+            )}
+          </div>
+        ) : (
+          <>
+            {historyDescription && (
+              <p className="battery-history-description" aria-live="polite">
+                {historyDescription}
+              </p>
+            )}
+            <ul className="battery-records" aria-label={text.historyRecords}>
+              {battery.records.map((record) => (
+                <li key={record.id}>
+                  <div className="battery-record-heading">
+                    <h3>
+                      {record.type === 'overvoltage'
+                        ? text.overvoltage
+                        : text.overtemperature}
+                    </h3>
+                    {showRecordCell && (
+                      <span>
+                        {record.cell === 0
+                          ? text.batteryPack
+                          : text.cell(record.cell)}
+                      </span>
+                    )}
+                  </div>
+                  <p
+                    className="battery-record-value"
+                    aria-label={text.recordValue}
+                  >
+                    <span className="battery-record-number">
+                      {record.type === 'overvoltage'
+                        ? (record.value / 1000).toFixed(3)
+                        : (record.value / 10).toFixed(1)}
+                    </span>
+                    <span className="battery-record-unit">
+                      <span className="battery-record-degree">
+                        {record.type === 'overvoltage' ? '' : '°'}
+                      </span>
+                      <span className="battery-record-symbol">
+                        {record.type === 'overvoltage' ? 'V' : 'C'}
+                      </span>
+                    </span>
+                  </p>
+                  <p
+                    className="battery-record-time"
+                    aria-label={text.occurrenceTime}
+                  >
+                    {formatTime(record.timeUnixSeconds, text.timeUnavailable)}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </section>
+    </section>
+  );
+}

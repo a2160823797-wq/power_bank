@@ -71,6 +71,22 @@ const englishMessages = new Map<string, string>([
     'This browser does not support Web Serial. Please use desktop Chrome or Edge',
   ],
   ['串口已连接，正在准备升级', 'Serial port connected. Preparing the upgrade'],
+  ['设备已连接，正在准备升级', 'Device connected. Preparing the upgrade'],
+  [
+    '未找到可用设备，请点击“选择设备”连接',
+    'No compatible device found. Click Select Device to connect.',
+  ],
+  [
+    '找到多台设备，请点击“选择设备”确认',
+    'Multiple devices found. Click Select Device to choose one.',
+  ],
+  [
+    '设备连接正在切换，请稍后重试',
+    'The device connection is changing. Please try again shortly.',
+  ],
+  ['请先重试断开设备连接', 'Please retry disconnecting the device first.'],
+  ['设备连接已关闭', 'The device connection is closed.'],
+  ['设备连接已断开', 'The device has disconnected.'],
   ['升级过程中发生未知错误', 'An unknown error occurred during the upgrade'],
   [
     '当前没有正在进行的固件升级',
@@ -81,9 +97,18 @@ const englishMessages = new Map<string, string>([
     'Unable to release the serial port. Please try disconnecting again',
   ],
   ['串口连接失败', 'Unable to connect to the serial port'],
-  ['未找到可用的电池设备，请点击“选择设备”连接', 'No compatible battery device found. Click Select Device to connect.'],
-  ['找到多台电池设备，请点击“选择设备”确认', 'Multiple battery devices found. Click Select Device to choose.'],
-  ['无法识别电池设备，请确认设备连接后重试', 'Battery device not recognized. Check the connection and try again.'],
+  [
+    '未找到可用的电池设备，请点击“选择设备”连接',
+    'No compatible battery device found. Click Select Device to connect.',
+  ],
+  [
+    '找到多台电池设备，请点击“选择设备”确认',
+    'Multiple battery devices found. Click Select Device to choose.',
+  ],
+  [
+    '无法识别电池设备，请确认设备连接后重试',
+    'Battery device not recognized. Check the connection and try again.',
+  ],
 ]);
 
 function englishPacketLabel(label: string) {

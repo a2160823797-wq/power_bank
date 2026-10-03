@@ -8,16 +8,9 @@ import {
   CircleAlert,
   Loader2,
 } from 'lucide-react';
-import {
-  crc32,
-  IapSerialSession,
-  type SerialApi,
-  validateFirmware,
-} from '@/lib/iap-protocol';
+import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import { DEFAULT_CONFIG } from '@/lib/iap-config';
-import BatteryMonitor, {
-  type BatteryMonitorHandle,
-} from '@/components/battery-monitor';
+import BatteryMonitor from '@/components/battery-monitor';
 import { LanguageProvider, useLanguage } from '@/lib/language';
 import { localizeProtocolMessage } from '@/lib/protocol-messages';
 import {
@@ -27,9 +20,11 @@ import {
   subscribeWorkspaceView,
   type WorkspaceView,
 } from '@/lib/workspace-view';
-import NtcSimulator, {
-  type NtcSimulatorHandle,
-} from '@/components/ntc-simulator';
+import NtcSimulator from '@/components/ntc-simulator';
+import {
+  DeviceConnectionProvider,
+  useDeviceConnection,
+} from '@/lib/device-connection-context';
 
 type Stage =
   | 'idle'
@@ -143,14 +138,12 @@ function formatHex(value: number) {
   return `0x${value.toString(16).toUpperCase().padStart(8, '0')}`;
 }
 
-const subscribeSerialSupport = () => () => {};
-const getSerialSupport = () => 'serial' in navigator;
-const getServerSerialSupport = () => null;
-
 export default function Home() {
   return (
     <LanguageProvider>
-      <Workspace />
+      <DeviceConnectionProvider>
+        <Workspace />
+      </DeviceConnectionProvider>
     </LanguageProvider>
   );
 }
@@ -163,13 +156,8 @@ function Workspace() {
     getWorkspaceView,
     getServerWorkspaceView,
   );
-  const [switchingView, setSwitchingView] = useState(false);
-  const [monitorBusy, setMonitorBusy] = useState(false);
-  const monitorBusyRef = useRef(false);
-  const switchingViewRef = useRef(false);
-  const monitorRef = useRef<BatteryMonitorHandle>(null);
-  const ntcRef = useRef<NtcSimulatorHandle>(null);
-  const autoConnectMonitorRef = useRef(true);
+  const { serialSupported, connectionBusy, connected, withUpgrade } =
+    useDeviceConnection();
   const [running, setRunning] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
   const runningRef = useRef(false);
@@ -179,21 +167,16 @@ function Workspace() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
-  const serialSupported = useSyncExternalStore<boolean | null>(
-    subscribeSerialSupport,
-    getSerialSupport,
-    getServerSerialSupport,
-  );
   const [logs, setLogs] = useState<string[]>([
     '升级器已就绪 · 等待选择 .bin 固件',
   ]);
   const [logsExpanded, setLogsExpanded] = useState(false);
   const sessionRef = useRef<IapSerialSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const statusRef = useRef({ stage, progress, firmware });
+  const statusRef = useRef({ stage, progress, firmware, connected });
   useEffect(() => {
-    statusRef.current = { stage, progress, firmware };
-  }, [stage, progress, firmware]);
+    statusRef.current = { stage, progress, firmware, connected };
+  }, [stage, progress, firmware, connected]);
   const busy = running;
   const validationError = firmware
     ? validateFirmware(firmware.data, DEFAULT_CONFIG)
@@ -246,7 +229,8 @@ function Workspace() {
   }
 
   async function startUpgrade() {
-    if (!firmware || runningRef.current || loadingFile) return;
+    if (!firmware || runningRef.current || loadingFile || connectionBusy)
+      return;
     if (validationError) {
       setError(validationError);
       setStage('error');
@@ -263,24 +247,25 @@ function Workspace() {
     setStage('connecting');
     runningRef.current = true;
     setRunning(true);
-    let session: IapSerialSession | null = null;
     try {
-      const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      const port = await serial.requestPort();
-      session = new IapSerialSession(port, log, DEFAULT_CONFIG);
-      sessionRef.current = session;
-      await session.open();
-      log('串口已连接，正在准备升级');
-      await session.upgrade(
-        firmware.file.name,
-        firmware.data,
-        (percent) => {
-          setProgress(percent);
-        },
-        (nextStage) => {
-          setStage(nextStage === 'handshake' ? 'preparing' : nextStage);
-        },
-      );
+      await withUpgrade(async (port) => {
+        const session = new IapSerialSession(port, log, DEFAULT_CONFIG);
+        sessionRef.current = session;
+        try {
+          await session.open();
+          log('设备已连接，正在准备升级');
+          await session.upgrade(
+            firmware.file.name,
+            firmware.data,
+            (percent) => setProgress(percent),
+            (nextStage) =>
+              setStage(nextStage === 'handshake' ? 'preparing' : nextStage),
+          );
+        } finally {
+          await session.close();
+          sessionRef.current = null;
+        }
+      });
       setStage('success');
       setProgress(100);
     } catch (reason) {
@@ -295,7 +280,6 @@ function Workspace() {
         log('升级已取消');
       }
     } finally {
-      await session?.close();
       sessionRef.current = null;
       runningRef.current = false;
       setRunning(false);
@@ -306,27 +290,8 @@ function Workspace() {
     await sessionRef.current?.cancel();
   }
 
-  async function changeView(nextView: WorkspaceView) {
-    if (
-      view === nextView ||
-      runningRef.current ||
-      monitorBusyRef.current ||
-      switchingViewRef.current
-    )
-      return;
-    switchingViewRef.current = true;
-    setSwitchingView(true);
-    try {
-      await monitorRef.current?.disconnect();
-      await ntcRef.current?.disconnect();
-      autoConnectMonitorRef.current = false;
-      setWorkspaceView(nextView);
-    } catch {
-      // 监测页保留断开失败提示，串口释放后再切换
-    } finally {
-      switchingViewRef.current = false;
-      setSwitchingView(false);
-    }
+  function changeView(nextView: WorkspaceView) {
+    if (!runningRef.current) setWorkspaceView(nextView);
   }
 
   useEffect(() => {
@@ -369,7 +334,9 @@ function Workspace() {
               ? t.deviceConnecting
               : ['preparing', 'writing', 'verifying'].includes(current.stage)
                 ? t.deviceConnected
-                : t.deviceDisconnected,
+                : current.connected
+                  ? t.deviceConnected
+                  : t.deviceDisconnected,
           firmware: current.firmware
             ? {
                 name: current.firmware.file.name,
@@ -431,24 +398,24 @@ function Workspace() {
             <button
               type="button"
               aria-pressed={view === 'battery'}
-              disabled={running || monitorBusy || switchingView}
-              onClick={() => void changeView('battery')}
+              disabled={running || connectionBusy}
+              onClick={() => changeView('battery')}
             >
               {t.battery}
             </button>
             <button
               type="button"
               aria-pressed={view === 'ntc'}
-              disabled={running || monitorBusy || switchingView}
-              onClick={() => void changeView('ntc')}
+              disabled={running || connectionBusy}
+              onClick={() => changeView('ntc')}
             >
               {t.ntc}
             </button>
             <button
               type="button"
               aria-pressed={view === 'upgrade'}
-              disabled={running || monitorBusy || switchingView}
-              onClick={() => void changeView('upgrade')}
+              disabled={running || connectionBusy}
+              onClick={() => changeView('upgrade')}
             >
               {t.upgrade}
             </button>
@@ -476,27 +443,11 @@ function Workspace() {
           </fieldset>
         </div>
       </header>
-      {view === 'battery' && (
-        <BatteryMonitor
-          ref={monitorRef}
-          serialSupported={serialSupported}
-          autoConnect={autoConnectMonitorRef.current}
-          onConnectionBusyChange={(value) => {
-            monitorBusyRef.current = value;
-            setMonitorBusy(value);
-          }}
-        />
-      )}
+      <div hidden={view !== 'battery'}>
+        <BatteryMonitor />
+      </div>
       <div className="ntc-workspace" hidden={view !== 'ntc'}>
-        <NtcSimulator
-          ref={ntcRef}
-          serialSupported={serialSupported}
-          active={view === 'ntc'}
-          onConnectionBusyChange={(value) => {
-            monitorBusyRef.current = value;
-            setMonitorBusy(value);
-          }}
-        />
+        <NtcSimulator />
       </div>
       {view === 'upgrade' && (
         <section className="updater-content" aria-label={t.upgrade}>

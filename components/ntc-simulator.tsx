@@ -1,343 +1,217 @@
 'use client';
 
-import {
-  forwardRef,
-  useEffect,
-  useEffectEvent,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react';
-import type { SerialApi } from '@/lib/iap-protocol';
-import {
-  NtcSerialSession,
-  NtcTimeoutError,
-  NtcIdentityTimeoutError,
-} from '@/lib/ntc-protocol';
-import {
-  connectSelectedNtcDevice,
-  discoverNtcDevice,
-  NtcDeviceSelectionError,
-  NtcPortReleaseError,
-} from '@/lib/ntc-connection';
-import { getSavedSerialPort, rememberSerialPort } from '@/lib/serial-device';
+import { useEffect, useRef, useState } from 'react';
+import { NtcTimeoutError } from '@/lib/ntc-protocol';
+import { useDeviceConnection } from '@/lib/device-connection-context';
 import { useLanguage } from '@/lib/language';
+import { localizeProtocolMessage } from '@/lib/protocol-messages';
 
-export interface NtcSimulatorHandle {
-  disconnect(): Promise<void>;
-}
-interface Props {
-  serialSupported: boolean | null;
-  active: boolean;
-  onConnectionBusyChange?: (busy: boolean) => void;
-}
 const ACK_TIMEOUT_MS = 1000;
-const LAST_PORT_KEY = 'powerbank.ntc-last-serial-port';
 
-const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
-  function NtcSimulator(
-    { serialSupported, active, onConnectionBusyChange },
-    ref,
-  ) {
-    const { language } = useLanguage();
-    const en = language === 'en';
-    const t = (zh: string, english: string) => (en ? english : zh);
-    const [temperature, setTemperature] = useState(25);
-    const [connected, setConnected] = useState(false);
-    const [connectionBusy, setConnectionBusy] = useState(false);
-    const [message, setMessage] = useState('');
-    const [selectionRequired, setSelectionRequired] = useState(false);
-    const sessionRef = useRef<NtcSerialSession | null>(null);
-    const controllerRef = useRef<AbortController | null>(null);
-    const queuedTemperature = useRef<number | null>(null);
-    const sendingRef = useRef(false);
-    const connectionBusyRef = useRef(false);
-    const taskRef = useRef<Promise<void> | null>(null);
-    const connectPromiseRef = useRef<Promise<void> | null>(null);
-    const connectControllerRef = useRef<AbortController | null>(null);
-    const mountedRef = useRef(true);
+export default function NtcSimulator() {
+  const { language } = useLanguage();
+  const en = language === 'en';
+  const t = (zh: string, english: string) => (en ? english : zh);
+  const {
+    serialSupported,
+    connection,
+    connectionBusy,
+    connected,
+    selectionRequired,
+    error,
+    connect,
+    disconnect,
+    setTemperature: setDeviceTemperature,
+  } = useDeviceConnection();
+  const [temperature, setTemperature] = useState(25);
+  const [feedbackState, setFeedbackState] = useState({
+    connected,
+    message: '',
+  });
+  if (feedbackState.connected !== connected) {
+    setFeedbackState({ connected, message: '' });
+  }
+  const message = feedbackState.message;
+  function setMessage(value: string) {
+    setFeedbackState({ connected, message: value });
+  }
+  const controllerRef = useRef<AbortController | null>(null);
+  const queuedTemperature = useRef<number | null>(null);
+  const sendingRef = useRef(false);
+  const mountedRef = useRef(true);
 
-    function busy(value: boolean) {
-      connectionBusyRef.current = value;
-      if (mountedRef.current) {
-        setConnectionBusy(value);
-        onConnectionBusyChange?.(value);
-      }
-    }
-    function cancelRequest() {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queuedTemperature.current = null;
+      controllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!connected) {
       queuedTemperature.current = null;
       controllerRef.current?.abort();
     }
-    async function disconnect() {
-      await connectPromiseRef.current;
-      if (!sessionRef.current && !sendingRef.current) return;
-      if (connectionBusyRef.current) throw new Error('串口正在切换，请稍候');
-      busy(true);
-      cancelRequest();
+  }, [connected]);
+
+  function sendTemperature(value: number) {
+    if (!connected || connectionBusy) return;
+    queuedTemperature.current = value;
+    if (sendingRef.current) return;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    sendingRef.current = true;
+    setMessage('');
+    void (async () => {
+      let cur_temperature = value;
       try {
-        await taskRef.current;
-        await sessionRef.current?.close();
-        sessionRef.current = null;
-        setConnected(false);
-        setMessage('');
-      } catch (reason) {
-        setMessage(reason instanceof Error ? reason.message : String(reason));
-        throw reason;
-      } finally {
-        busy(false);
-      }
-    }
-    useImperativeHandle(ref, () => ({ disconnect }));
-    useEffect(() => {
-      mountedRef.current = true;
-      return () => {
-        mountedRef.current = false;
-        connectControllerRef.current?.abort();
-        controllerRef.current?.abort();
-        void sessionRef.current?.close().catch(() => undefined);
-      };
-    }, []);
-
-    async function connect(automatic = false) {
-      if (connectionBusyRef.current || connected || !serialSupported) return;
-      busy(true);
-      setMessage('');
-      const controller = new AbortController();
-      connectControllerRef.current = controller;
-      const operation = (async () => {
-        try {
-          const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-          let selectedPort = !automatic && selectionRequired
-            ? await serial.requestPort()
-            : null;
-          await taskRef.current;
-          await sessionRef.current?.close();
-          sessionRef.current = null;
-          if (!mountedRef.current) return;
-          const onDisconnect = (session: NtcSerialSession) => {
-            if (!mountedRef.current || sessionRef.current !== session) return;
-            cancelRequest();
-            setConnected(false);
-            setMessage(t('设备已断开，请重新连接', 'Device disconnected. Please reconnect.'));
-          };
-          let result;
-          if (selectedPort) {
-            result = await connectSelectedNtcDevice(selectedPort, controller.signal, onDisconnect);
-          } else {
-            const ports = await serial.getPorts();
-            const savedPort = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
-            if (automatic && !savedPort) return;
-            if (!ports.length && !automatic) {
-              selectedPort = await serial.requestPort();
-              result = await connectSelectedNtcDevice(selectedPort, controller.signal, onDisconnect);
-            } else {
-              result = await discoverNtcDevice(ports, savedPort, controller.signal, onDisconnect);
-            }
-          }
-          if (!result) {
-            if (mountedRef.current) {
-              setSelectionRequired(true);
-              setMessage(t('未找到可用设备，请点击“选择设备”连接', 'No compatible device found. Click Select device to connect.'));
-            }
-            return;
-          }
-          sessionRef.current = result.session;
-          if (!mountedRef.current) {
-            await result.session.close();
-            return;
-          }
-          if (!result.session.isOpen) {
-            throw new Error(t('设备已断开，请重新连接', 'Device disconnected. Please reconnect.'));
-          }
-          setSelectionRequired(false);
-          setConnected(true);
-          rememberSerialPort(LAST_PORT_KEY, result.port);
-        } catch (reason) {
-          if (reason instanceof NtcPortReleaseError) sessionRef.current = reason.session;
-          let detail =
-            reason instanceof Error ? reason.message : String(reason);
-          try {
-            await sessionRef.current?.close();
-            sessionRef.current = null;
-          } catch (closeError) {
-            detail += `；${closeError instanceof Error ? closeError.message : String(closeError)}`;
-          }
-          if (mountedRef.current) {
-            if (!automatic && reason instanceof DOMException && reason.name === 'SecurityError') {
-              setSelectionRequired(true);
-            }
-            if (reason instanceof NtcDeviceSelectionError) {
-              setSelectionRequired(true);
-              detail = t('找到多台设备，请点击“选择设备”确认', 'Multiple devices found. Click Select device to choose.');
-            } else if (reason instanceof NtcIdentityTimeoutError) {
-              setSelectionRequired(true);
-              detail = t('无法识别设备，请确认 STM32 已烧录配套固件后重试', 'Device not recognized. Install the matching STM32 firmware and try again.');
-            }
-            if (!(reason instanceof DOMException && (reason.name === 'NotFoundError' || reason.name === 'AbortError'))) {
-              setMessage(detail);
-            }
-          }
-        } finally {
-          if (connectControllerRef.current === controller) connectControllerRef.current = null;
-          busy(false);
-        }
-      })();
-      connectPromiseRef.current = operation;
-      await operation;
-      if (connectPromiseRef.current === operation)
-        connectPromiseRef.current = null;
-    }
-
-    const connectLastPort = useEffectEvent(() => {
-      void connect(true);
-    });
-    useEffect(() => {
-      if (serialSupported && active) connectLastPort();
-    }, [serialSupported, active]);
-
-    function sendTemperature(value: number) {
-      if (!sessionRef.current || !connected || connectionBusyRef.current)
-        return;
-      queuedTemperature.current = value;
-      if (sendingRef.current) return;
-      const session = sessionRef.current;
-      const controller = new AbortController();
-      controllerRef.current = controller;
-      sendingRef.current = true;
-      setMessage('');
-      taskRef.current = (async () => {
-        let cur_temperature = value;
-        try {
-          while (queuedTemperature.current !== null) {
-            cur_temperature = queuedTemperature.current;
-            queuedTemperature.current = null;
-            const reply = await session.setTemperature(
-              cur_temperature,
-              ACK_TIMEOUT_MS,
-              controller.signal,
-            );
-            if (reply.status !== 0) {
-              throw new Error(
-                t(
-                  `${cur_temperature}℃ 设置失败，请检查设备后重试`,
-                  `Failed to set ${cur_temperature}°C. Check the device and try again.`,
-                ),
-              );
-            }
-          }
-        } catch (reason) {
-          if (!controller.signal.aborted) {
-            setMessage(
-              reason instanceof NtcTimeoutError
-                ? t(
-                    `${cur_temperature}℃ 设置超时，请检查设备连接后重试`,
-                    `Setting ${cur_temperature}°C timed out. Check the connection and try again.`,
-                  )
-                : reason instanceof Error
-                  ? reason.message
-                  : String(reason),
-            );
-          }
-        } finally {
-          controllerRef.current = null;
-          sendingRef.current = false;
+        while (queuedTemperature.current !== null) {
+          cur_temperature = queuedTemperature.current;
           queuedTemperature.current = null;
+          const reply = await setDeviceTemperature(
+            cur_temperature,
+            ACK_TIMEOUT_MS,
+            controller.signal,
+          );
+          if (reply.status !== 0) {
+            throw new Error(
+              t(
+                `${cur_temperature}℃ 设置失败，请检查设备后重试`,
+                `Failed to set ${cur_temperature}°C. Check the device and try again.`,
+              ),
+            );
+          }
         }
-      })();
-    }
-
-    const connectionButton = (
-      <button
-        className="battery-button battery-button-primary"
-        disabled={connectionBusy || !serialSupported}
-        onClick={() =>
-          void (connected ? disconnect() : connect()).catch(() => undefined)
+      } catch (reason) {
+        if (
+          mountedRef.current &&
+          !controller.signal.aborted &&
+          !(reason instanceof Error && reason.name === 'AbortError')
+        ) {
+          setMessage(
+            reason instanceof NtcTimeoutError
+              ? t(
+                  `${cur_temperature}℃ 设置超时，请检查设备连接后重试`,
+                  `Setting ${cur_temperature}°C timed out. Check the connection and try again.`,
+                )
+              : reason instanceof Error
+                ? reason.message
+                : String(reason),
+          );
         }
-      >
-        {connectionBusy
-          ? t('正在连接…', 'Connecting…')
-          : connected
-            ? t('断开设备', 'Disconnect device')
-            : selectionRequired
-              ? t('选择设备', 'Select device')
-              : t('连接设备', 'Connect device')}
-      </button>
-    );
-    const feedback = (
-      <>
-        {serialSupported === false && (
-          <p className="ntc-alert" role="alert">
-            {t(
-              '请使用桌面版 Chrome / Edge 打开此 HTML，当前环境不支持 Web Serial。',
-              'Open this HTML in desktop Chrome / Edge. Web Serial is unavailable here.',
-            )}
-          </p>
-        )}
-        {message && <output className="ntc-alert">{message}</output>}
-      </>
-    );
+      } finally {
+        controllerRef.current = null;
+        sendingRef.current = false;
+        queuedTemperature.current = null;
+      }
+    })();
+  }
 
-    return (
-      <section
-        className="ntc-content"
-        aria-label={t('数字电位器', 'Digital potentiometer')}
-      >
-        {!connected && (
-          <div className="ntc-empty">
-            {connectionButton}
-            {feedback}
-          </div>
-        )}
-        {connected && (
-          <>
-            <div className="ntc-heading">{connectionButton}</div>
-            {feedback}
-            <section className="ntc-panel ntc-setpoint">
-              <div className="ntc-temperature">
-                <output htmlFor="ntc-temperature-slider">
-                  {temperature}
-                  <small>℃</small>
-                </output>
-              </div>
-              <input
-                id="ntc-temperature-slider"
-                className="ntc-slider"
-                type="range"
-                min="-25"
-                max="125"
-                step="1"
-                value={temperature}
-                aria-label={t('设定温度', 'Set temperature')}
-                onChange={(e) => setTemperature(Number(e.currentTarget.value))}
-                onPointerDown={(e) =>
-                  e.currentTarget.setPointerCapture(e.pointerId)
-                }
-                onPointerUp={(e) =>
-                  sendTemperature(Number(e.currentTarget.value))
-                }
-                onKeyUp={(e) => {
-                  if (
-                    [
-                      'ArrowLeft',
-                      'ArrowRight',
-                      'ArrowUp',
-                      'ArrowDown',
-                      'Home',
-                      'End',
-                      'PageUp',
-                      'PageDown',
-                    ].includes(e.key)
-                  ) {
-                    sendTemperature(Number(e.currentTarget.value));
-                  }
-                }}
-              />
-            </section>
-          </>
-        )}
-      </section>
-    );
-  },
-);
+  const connectionButton = (
+    <button
+      className="battery-button battery-button-primary"
+      disabled={connectionBusy || !serialSupported}
+      onClick={() => {
+        setMessage('');
+        void (
+          connected || connection === 'release-error'
+            ? disconnect()
+            : connect('ntc')
+        ).catch(() => undefined);
+      }}
+    >
+      {connection === 'connecting'
+        ? t('正在连接…', 'Connecting…')
+        : connection === 'disconnecting'
+          ? t('正在断开…', 'Disconnecting…')
+          : connection === 'release-error'
+            ? t('重试断开', 'Retry disconnect')
+            : connected
+              ? t('断开设备', 'Disconnect device')
+              : selectionRequired
+                ? t('选择设备', 'Select device')
+                : t('连接设备', 'Connect device')}
+    </button>
+  );
+  const feedback = (
+    <>
+      {serialSupported === false && (
+        <p className="ntc-alert" role="alert">
+          {t(
+            '请使用桌面版 Chrome / Edge 打开此 HTML，当前环境不支持 Web Serial。',
+            'Open this HTML in desktop Chrome / Edge. Web Serial is unavailable here.',
+          )}
+        </p>
+      )}
+      {error && (
+        <output className="ntc-alert">
+          {localizeProtocolMessage(error, language)}
+        </output>
+      )}
+      {message && <output className="ntc-alert">{message}</output>}
+    </>
+  );
 
-export default NtcSimulator;
+  return (
+    <section
+      className="ntc-content"
+      aria-label={t('数字电位器', 'Digital potentiometer')}
+    >
+      {!connected && (
+        <div className="ntc-empty">
+          {connectionButton}
+          {feedback}
+        </div>
+      )}
+      {connected && (
+        <>
+          <div className="ntc-heading">{connectionButton}</div>
+          {feedback}
+          <section className="ntc-panel ntc-setpoint">
+            <div className="ntc-temperature">
+              <output htmlFor="ntc-temperature-slider">
+                {temperature}
+                <small>℃</small>
+              </output>
+            </div>
+            <input
+              id="ntc-temperature-slider"
+              className="ntc-slider"
+              type="range"
+              min="-25"
+              max="125"
+              step="1"
+              value={temperature}
+              aria-label={t('设定温度', 'Set temperature')}
+              onChange={(e) => setTemperature(Number(e.currentTarget.value))}
+              onPointerDown={(e) =>
+                e.currentTarget.setPointerCapture(e.pointerId)
+              }
+              onPointerUp={(e) =>
+                sendTemperature(Number(e.currentTarget.value))
+              }
+              onKeyUp={(e) => {
+                if (
+                  [
+                    'ArrowLeft',
+                    'ArrowRight',
+                    'ArrowUp',
+                    'ArrowDown',
+                    'Home',
+                    'End',
+                    'PageUp',
+                    'PageDown',
+                  ].includes(e.key)
+                ) {
+                  sendTemperature(Number(e.currentTarget.value));
+                }
+              }}
+            />
+          </section>
+        </>
+      )}
+    </section>
+  );
+}
