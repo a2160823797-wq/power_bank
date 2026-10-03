@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { Usb } from 'lucide-react';
 import type { SerialApi } from '@/lib/iap-protocol';
 import { NtcSerialSession, NtcTimeoutError } from '@/lib/ntc-protocol';
 import { useLanguage } from '@/lib/language';
@@ -164,26 +165,23 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
       })();
     }
 
-    return (
-      <section
-        className="ntc-content"
-        aria-label={t('数字电位器', 'Digital potentiometer')}
+    const connectionButton = (
+      <button
+        className="battery-button battery-button-primary"
+        disabled={connectionBusy || !serialSupported}
+        onClick={() =>
+          void (connected ? disconnect() : connect()).catch(() => undefined)
+        }
       >
-        <div className="ntc-heading">
-          <button
-            className="battery-button battery-button-primary"
-            disabled={connectionBusy || !serialSupported}
-            onClick={() =>
-              void (connected ? disconnect() : connect()).catch(() => undefined)
-            }
-          >
-            {connectionBusy
-              ? t('处理中…', 'Working…')
-              : connected
-                ? t('断开串口', 'Disconnect')
-                : t('连接串口', 'Connect serial')}
-          </button>
-        </div>
+        {connectionBusy
+          ? t('处理中…', 'Working…')
+          : connected
+            ? t('断开串口', 'Disconnect')
+            : t('连接串口', 'Connect serial')}
+      </button>
+    );
+    const feedback = (
+      <>
         {serialSupported === false && (
           <p className="ntc-alert" role="alert">
             {t(
@@ -193,48 +191,76 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
           </p>
         )}
         {message && <output className="ntc-alert">{message}</output>}
-        {connected && (
-          <section className="ntc-panel ntc-setpoint">
-            <div className="ntc-temperature">
-              <output htmlFor="ntc-temperature-slider">
-                {temperature}
-                <small>℃</small>
-              </output>
+      </>
+    );
+
+    return (
+      <section
+        className="ntc-content"
+        aria-label={t('数字电位器', 'Digital potentiometer')}
+      >
+        {!connected && (
+          <div className="ntc-empty">
+            <div className="ntc-empty-icon" aria-hidden="true">
+              <Usb strokeWidth={1.5} />
             </div>
-            <input
-              id="ntc-temperature-slider"
-              className="ntc-slider"
-              type="range"
-              min="-25"
-              max="125"
-              step="1"
-              value={temperature}
-              aria-label={t('设定温度', 'Set temperature')}
-              onChange={(e) => setTemperature(Number(e.currentTarget.value))}
-              onPointerDown={(e) =>
-                e.currentTarget.setPointerCapture(e.pointerId)
-              }
-              onPointerUp={(e) =>
-                sendTemperature(Number(e.currentTarget.value))
-              }
-              onKeyUp={(e) => {
-                if (
-                  [
-                    'ArrowLeft',
-                    'ArrowRight',
-                    'ArrowUp',
-                    'ArrowDown',
-                    'Home',
-                    'End',
-                    'PageUp',
-                    'PageDown',
-                  ].includes(e.key)
-                ) {
-                  sendTemperature(Number(e.currentTarget.value));
+            <h2>{t('连接设备', 'Connect your device')}</h2>
+            <p>
+              {t(
+                '连接串口后即可设置温度',
+                'Connect a serial port to set the temperature',
+              )}
+            </p>
+            {connectionButton}
+            {feedback}
+          </div>
+        )}
+        {connected && (
+          <>
+            <div className="ntc-heading">{connectionButton}</div>
+            {feedback}
+            <section className="ntc-panel ntc-setpoint">
+              <div className="ntc-temperature">
+                <output htmlFor="ntc-temperature-slider">
+                  {temperature}
+                  <small>℃</small>
+                </output>
+              </div>
+              <input
+                id="ntc-temperature-slider"
+                className="ntc-slider"
+                type="range"
+                min="-25"
+                max="125"
+                step="1"
+                value={temperature}
+                aria-label={t('设定温度', 'Set temperature')}
+                onChange={(e) => setTemperature(Number(e.currentTarget.value))}
+                onPointerDown={(e) =>
+                  e.currentTarget.setPointerCapture(e.pointerId)
                 }
-              }}
-            />
-          </section>
+                onPointerUp={(e) =>
+                  sendTemperature(Number(e.currentTarget.value))
+                }
+                onKeyUp={(e) => {
+                  if (
+                    [
+                      'ArrowLeft',
+                      'ArrowRight',
+                      'ArrowUp',
+                      'ArrowDown',
+                      'Home',
+                      'End',
+                      'PageUp',
+                      'PageDown',
+                    ].includes(e.key)
+                  ) {
+                    sendTemperature(Number(e.currentTarget.value));
+                  }
+                }}
+              />
+            </section>
+          </>
         )}
       </section>
     );
