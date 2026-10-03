@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'PowerBank',
-  description: 'X202 串口上位机，读取电池安全信息、异常记录并升级固件',
+  description: 'X202 serial interface for battery monitoring, fault history and firmware updates',
 };
 
 export default function RootLayout({
@@ -12,7 +12,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body className="antialiased">{children}</body>
     </html>
   );

@@ -18,6 +18,8 @@ import { DEFAULT_CONFIG } from '@/lib/iap-config';
 import BatteryMonitor, {
   type BatteryMonitorHandle,
 } from '@/components/battery-monitor';
+import { LanguageProvider, useLanguage } from '@/lib/language';
+import { localizeProtocolMessage } from '@/lib/protocol-messages';
 
 type Stage =
   | 'idle'
@@ -30,15 +32,95 @@ type Stage =
   | 'error';
 type FirmwareInfo = { file: File; data: Uint8Array; crc: number };
 
-const stageLabel: Record<Stage, string> = {
-  idle: '等待固件',
-  ready: '准备就绪',
-  connecting: '连接设备',
-  preparing: '进入升级模式',
-  writing: '传输固件',
-  verifying: '确认接收完成',
-  success: '升级完成',
-  error: '升级失败',
+const messages = {
+  en: {
+    navigation: 'Features',
+    language: 'Language',
+    battery: 'Battery Monitor',
+    upgrade: 'Firmware Update',
+    chooseFirmware: 'Choose firmware',
+    replaceFirmware: 'Replace firmware',
+    readingFirmware: 'Reading firmware…',
+    pleaseWait: 'Please wait',
+    clickToReplace: ' · Click to replace',
+    dropFirmware: 'Or drop a .bin file here',
+    transferProgress: 'Firmware transfer progress',
+    received: 'The device has confirmed receipt.',
+    selectDevice: 'Select your device in the browser dialog.',
+    upgradeStopped: 'The update has stopped. See the message below.',
+    keepConnected: 'Keep the device connected until the update finishes.',
+    browserNote: 'Use Chrome or Edge on a computer to connect your device.',
+    hideDetails: 'Hide details',
+    showDetails: 'Show details',
+    nextUpgrade: 'Update again',
+    upgrading: 'Updating…',
+    startUpgrade: 'Start update',
+    cancelUpgrade: 'Cancel update',
+    statusToolTitle: 'Read firmware update status',
+    statusToolDescription:
+      'Read the selected firmware, device connection and update progress without changing the device state.',
+    deviceConnecting: 'Connecting',
+    deviceConnected: 'Connected',
+    deviceDisconnected: 'Disconnected',
+    cancelToolTitle: 'Cancel firmware update',
+    cancelToolDescription:
+      'Send a cancel frame to the device and stop the current update only when an update is running.',
+    noActiveUpgrade: 'No firmware update is currently running',
+    stages: {
+      idle: 'Waiting for firmware',
+      ready: 'Ready',
+      connecting: 'Connecting device',
+      preparing: 'Entering update mode',
+      writing: 'Transferring firmware',
+      verifying: 'Confirming receipt',
+      success: 'Update complete',
+      error: 'Update failed',
+    } satisfies Record<Stage, string>,
+  },
+  zh: {
+    navigation: '功能导航',
+    language: '语言',
+    battery: '电池监测',
+    upgrade: '固件升级',
+    chooseFirmware: '选择固件',
+    replaceFirmware: '更换固件',
+    readingFirmware: '正在读取固件…',
+    pleaseWait: '请稍候',
+    clickToReplace: ' · 点击更换',
+    dropFirmware: '也可将 .bin 文件拖到这里',
+    transferProgress: '固件传输进度',
+    received: '设备已确认接收完成。',
+    selectDevice: '请在浏览器弹窗中选择你的设备。',
+    upgradeStopped: '升级已停止，请查看下方提示。',
+    keepConnected: '请保持设备连接，等待升级完成。',
+    browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
+    hideDetails: '收起详情',
+    showDetails: '查看详情',
+    nextUpgrade: '下一次升级',
+    upgrading: '正在升级…',
+    startUpgrade: '一键升级',
+    cancelUpgrade: '取消升级',
+    statusToolTitle: '读取固件升级状态',
+    statusToolDescription:
+      '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
+    deviceConnecting: '正在握手',
+    deviceConnected: '已连接',
+    deviceDisconnected: '未连接',
+    cancelToolTitle: '取消固件升级',
+    cancelToolDescription:
+      '仅在升级正在进行时向设备发送取消帧，并停止当前升级。',
+    noActiveUpgrade: '当前没有正在进行的固件升级',
+    stages: {
+      idle: '等待固件',
+      ready: '准备就绪',
+      connecting: '连接设备',
+      preparing: '进入升级模式',
+      writing: '传输固件',
+      verifying: '确认接收完成',
+      success: '升级完成',
+      error: '升级失败',
+    } satisfies Record<Stage, string>,
+  },
 };
 
 function formatBytes(value: number) {
@@ -54,6 +136,16 @@ const getSerialSupport = () => 'serial' in navigator;
 const getServerSerialSupport = () => null;
 
 export default function Home() {
+  return (
+    <LanguageProvider>
+      <Workspace />
+    </LanguageProvider>
+  );
+}
+
+function Workspace() {
+  const { language, setLanguage } = useLanguage();
+  const t = messages[language];
   const [view, setView] = useState<'battery' | 'upgrade'>('battery');
   const [switchingView, setSwitchingView] = useState(false);
   const [monitorBusy, setMonitorBusy] = useState(false);
@@ -241,8 +333,8 @@ export default function Home() {
     };
     register({
       name: 'get_firmware_upgrade_status',
-      title: '读取固件升级状态',
-      description: '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
+      title: t.statusToolTitle,
+      description: t.statusToolDescription,
       inputSchema: {
         type: 'object',
         properties: {},
@@ -256,10 +348,10 @@ export default function Home() {
           progress: current.progress,
           device:
             current.stage === 'connecting'
-              ? '正在握手'
+              ? t.deviceConnecting
               : ['preparing', 'writing', 'verifying'].includes(current.stage)
-                ? '已连接'
-                : '未连接',
+                ? t.deviceConnected
+                : t.deviceDisconnected,
           firmware: current.firmware
             ? {
                 name: current.firmware.file.name,
@@ -272,8 +364,8 @@ export default function Home() {
     });
     register({
       name: 'cancel_firmware_upgrade',
-      title: '取消固件升级',
-      description: '仅在升级正在进行时向设备发送取消帧，并停止当前升级。',
+      title: t.cancelToolTitle,
+      description: t.cancelToolDescription,
       inputSchema: {
         type: 'object',
         properties: {},
@@ -281,13 +373,13 @@ export default function Home() {
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       async execute() {
-        if (!sessionRef.current) throw new Error('当前没有正在进行的固件升级');
+        if (!sessionRef.current) throw new Error(t.noActiveUpgrade);
         await sessionRef.current.cancel();
         return { cancelled: true };
       },
     });
     return () => lifecycle.abort();
-  }, []);
+  }, [t]);
 
   return (
     <main className="updater-shell">
@@ -316,24 +408,47 @@ export default function Home() {
             d="M178 37C190 18 209 8 230 4C209 5 189 13 175 28Z"
           />
         </svg>
-        <nav className="workspace-nav" aria-label="功能导航">
-          <button
-            type="button"
-            aria-pressed={view === 'battery'}
-            disabled={running || monitorBusy || switchingView}
-            onClick={() => void changeView('battery')}
-          >
-            电池监测
-          </button>
-          <button
-            type="button"
-            aria-pressed={view === 'upgrade'}
-            disabled={running || monitorBusy || switchingView}
-            onClick={() => void changeView('upgrade')}
-          >
-            固件升级
-          </button>
-        </nav>
+        <div className="topbar-controls">
+          <nav className="workspace-nav" aria-label={t.navigation}>
+            <button
+              type="button"
+              aria-pressed={view === 'battery'}
+              disabled={running || monitorBusy || switchingView}
+              onClick={() => void changeView('battery')}
+            >
+              {t.battery}
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === 'upgrade'}
+              disabled={running || monitorBusy || switchingView}
+              onClick={() => void changeView('upgrade')}
+            >
+              {t.upgrade}
+            </button>
+          </nav>
+          <fieldset className="language-switch">
+            <legend className="sr-only">{t.language}</legend>
+            <button
+              type="button"
+              lang="en"
+              aria-label="English"
+              aria-pressed={language === 'en'}
+              onClick={() => setLanguage('en')}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              lang="zh-CN"
+              aria-label="中文"
+              aria-pressed={language === 'zh'}
+              onClick={() => setLanguage('zh')}
+            >
+              中文
+            </button>
+          </fieldset>
+        </div>
       </header>
       {view === 'battery' && (
         <BatteryMonitor
@@ -347,7 +462,7 @@ export default function Home() {
         />
       )}
       {view === 'upgrade' && (
-        <section className="updater-content" aria-label="固件升级">
+        <section className="updater-content" aria-label={t.upgrade}>
           <input
             ref={fileInputRef}
             type="file"
@@ -355,7 +470,7 @@ export default function Home() {
             disabled={busy || loadingFile}
             className="sr-only"
             tabIndex={-1}
-            aria-label="选择固件"
+            aria-label={t.chooseFirmware}
             onChange={(event) => {
               void loadFile(event.target.files?.[0]);
               event.target.value = '';
@@ -366,7 +481,9 @@ export default function Home() {
             type="button"
             disabled={busy || loadingFile}
             aria-label={
-              firmware ? `更换固件：${firmware.file.name}` : '选择固件'
+              firmware
+                ? `${t.replaceFirmware}: ${firmware.file.name}`
+                : t.chooseFirmware
             }
             title={firmware?.file.name}
             onClick={() => fileInputRef.current?.click()}
@@ -384,17 +501,17 @@ export default function Home() {
             <span className="file-copy">
               <span className="file-title">
                 {loadingFile
-                  ? '正在读取固件…'
+                  ? t.readingFirmware
                   : firmware
                     ? firmware.file.name
-                    : '选择固件'}
+                    : t.chooseFirmware}
               </span>
               <span className="file-description">
                 {loadingFile
-                  ? '请稍候'
+                  ? t.pleaseWait
                   : firmware
-                    ? `${formatBytes(firmware.data.length)}${busy ? '' : ' · 点击更换'}`
-                    : '也可将 .bin 文件拖到这里'}
+                    ? `${formatBytes(firmware.data.length)}${busy ? '' : t.clickToReplace}`
+                    : t.dropFirmware}
               </span>
             </span>
           </button>
@@ -409,7 +526,7 @@ export default function Home() {
                   ) : (
                     <Loader2 className="icon-spinner" aria-hidden="true" />
                   )}
-                  {stageLabel[stage]}
+                  {t.stages[stage]}
                 </output>
                 {(showTransferProgress || stage === 'success') && (
                   <span className="status-percent">{progress}%</span>
@@ -420,30 +537,28 @@ export default function Home() {
                   className="transfer-progress"
                   value={progress}
                   max={100}
-                  aria-label="固件传输进度"
+                  aria-label={t.transferProgress}
                 />
               )}
               <p className="status-description">
                 {stage === 'success'
-                  ? '设备已确认接收完成。'
+                  ? t.received
                   : stage === 'connecting'
-                    ? '请在浏览器弹窗中选择你的设备。'
+                    ? t.selectDevice
                     : stage === 'error'
-                      ? '升级已停止，请查看下方提示。'
-                      : '请保持设备连接，等待升级完成。'}
+                      ? t.upgradeStopped
+                      : t.keepConnected}
               </p>
             </div>
           )}
           {displayedError && (
             <div className="error-message" role="alert">
               <CircleAlert aria-hidden="true" />
-              <p>{displayedError}</p>
+              <p>{localizeProtocolMessage(displayedError, language)}</p>
             </div>
           )}
           {serialSupported === false && (
-            <p className="browser-note">
-              请使用电脑上的 Chrome 或 Edge 连接设备。
-            </p>
+            <p className="browser-note">{t.browserNote}</p>
           )}
           {showDiagnostics && (
             <div className="diagnostics">
@@ -454,12 +569,14 @@ export default function Home() {
                 aria-controls="upgrade-logs"
                 onClick={() => setLogsExpanded((current) => !current)}
               >
-                {logsExpanded ? '收起详情' : '查看详情'}
+                {logsExpanded ? t.hideDetails : t.showDetails}
               </button>
               {logsExpanded && (
                 <div id="upgrade-logs" className="upgrade-logs">
                   {logs.map((entry, index) => (
-                    <p key={`${entry}-${index}`}>{entry}</p>
+                    <p key={`${entry}-${index}`}>
+                      {localizeProtocolMessage(entry, language)}
+                    </p>
                   ))}
                 </div>
               )}
@@ -477,7 +594,7 @@ export default function Home() {
                     setError('');
                   }}
                 >
-                  下一次升级 <ArrowRight aria-hidden="true" />
+                  {t.nextUpgrade} <ArrowRight aria-hidden="true" />
                 </button>
               ) : (
                 <button
@@ -491,7 +608,7 @@ export default function Home() {
                   }
                   onClick={startUpgrade}
                 >
-                  {busy ? '正在升级…' : '一键升级'}
+                  {busy ? t.upgrading : t.startUpgrade}
                   {!busy && <ArrowUpToLine aria-hidden="true" />}
                 </button>
               )}
@@ -501,7 +618,7 @@ export default function Home() {
                   className="secondary-action"
                   onClick={cancelUpgrade}
                 >
-                  取消升级
+                  {t.cancelUpgrade}
                 </button>
               )}
             </div>

@@ -5,7 +5,7 @@ import './app/globals.css';
 const root = document.getElementById('root');
 
 if (!root) {
-  throw new Error('找不到页面根节点');
+  throw new Error('Page root element not found');
 }
 
 createRoot(root).render(<Home />);

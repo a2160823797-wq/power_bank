@@ -367,6 +367,9 @@
   .battery-metric-value {
     font-size: 1.625rem;
   }
+  .battery-field-label {
+    font-size: 1rem;
+  }
   .battery-metric-value > span:not(.battery-empty-value) {
     margin-left: 5px;
   }
