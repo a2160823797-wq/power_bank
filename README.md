@@ -1,5 +1,9 @@
 # PowerBank
 
+现已新增 **数字电位器 / NTC 模拟器** 页面，搭配 `C:/Desktop/new_gb` 的 STM32F103C8T6 + AD5270 固件，串口统一1500000 baud。当前仅实现串口连接和温度滑条设置，保留原电池监测与升级页面。连接后拖动−25～125℃滑条只更新显示，松开后下发温度命令并等待CRC正确的STM32回复，超时或设备返回失败时提示用户；未收到回复前保留最新已提交温度，不并发发送。暂不实现自动扫描、测试记录和CSV导出。完整厂家表、架构、协议与硬件说明见 [NTC模拟器文档](../new_gb/docs/NTC_SIMULATOR.md)。
+
+运行 `npm run test:ntc` 验证温度串口协议，`npm run build:offline` 更新单文件 `PowerBank.html`。本次未烧录或验证真实AD5270输出。
+
 适配 `x202_015` 的串口上位机，提供电池安全信息监测、异常记录读取和固件升级。页面已内置串口与升级参数，无需配置。电池监测参考 `C:/Desktop/index.html` 以及 `C:/Desktop/prj/x202/firmware/x202_015/System/cmd.c`、`System/uart.c`。
 
 ## 使用
