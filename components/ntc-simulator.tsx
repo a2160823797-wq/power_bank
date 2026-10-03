@@ -3,15 +3,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { NtcTimeoutError } from '@/lib/ntc-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
-import { useLanguage } from '@/lib/language';
-import { localizeProtocolMessage } from '@/lib/protocol-messages';
 
 const ACK_TIMEOUT_MS = 1000;
 
 export default function NtcSimulator() {
-  const { language } = useLanguage();
-  const en = language === 'en';
-  const t = (zh: string, english: string) => (en ? english : zh);
   const {
     serialSupported,
     connection,
@@ -76,12 +71,7 @@ export default function NtcSimulator() {
             controller.signal,
           );
           if (reply.status !== 0) {
-            throw new Error(
-              t(
-                `${cur_temperature}℃ 设置失败，请检查设备后重试`,
-                `Failed to set ${cur_temperature}°C. Check the device and try again.`,
-              ),
-            );
+            throw new Error(`${cur_temperature}℃ 设置失败，请检查设备后重试`);
           }
         }
       } catch (reason) {
@@ -92,10 +82,7 @@ export default function NtcSimulator() {
         ) {
           setMessage(
             reason instanceof NtcTimeoutError
-              ? t(
-                  `${cur_temperature}℃ 设置超时，请检查设备连接后重试`,
-                  `Setting ${cur_temperature}°C timed out. Check the connection and try again.`,
-                )
+              ? `${cur_temperature}℃ 设置超时，请检查设备连接后重试`
               : reason instanceof Error
                 ? reason.message
                 : String(reason),
@@ -123,42 +110,32 @@ export default function NtcSimulator() {
       }}
     >
       {connection === 'connecting'
-        ? t('正在连接…', 'Connecting…')
+        ? '正在连接…'
         : connection === 'disconnecting'
-          ? t('正在断开…', 'Disconnecting…')
+          ? '正在断开…'
           : connection === 'release-error'
-            ? t('重试断开', 'Retry disconnect')
+            ? '重试断开'
             : connected
-              ? t('断开设备', 'Disconnect device')
+              ? '断开设备'
               : selectionRequired
-                ? t('选择设备', 'Select device')
-                : t('连接设备', 'Connect device')}
+                ? '选择设备'
+                : '连接设备'}
     </button>
   );
   const feedback = (
     <>
       {serialSupported === false && (
         <p className="ntc-alert" role="alert">
-          {t(
-            '请使用桌面版 Chrome / Edge 打开此 HTML，当前环境不支持 Web Serial。',
-            'Open this HTML in desktop Chrome / Edge. Web Serial is unavailable here.',
-          )}
+          请使用桌面版 Chrome / Edge 打开此 HTML，当前环境不支持 Web Serial。
         </p>
       )}
-      {error && (
-        <output className="ntc-alert">
-          {localizeProtocolMessage(error, language)}
-        </output>
-      )}
+      {error && <output className="ntc-alert">{error}</output>}
       {message && <output className="ntc-alert">{message}</output>}
     </>
   );
 
   return (
-    <section
-      className="ntc-content"
-      aria-label={t('数字电位器', 'Digital potentiometer')}
-    >
+    <section className="ntc-content" aria-label="数字电位器">
       {!connected && (
         <div className="ntc-empty">
           {connectionButton}
@@ -184,7 +161,7 @@ export default function NtcSimulator() {
               max="125"
               step="1"
               value={temperature}
-              aria-label={t('设定温度', 'Set temperature')}
+              aria-label="设定温度"
               onChange={(e) => setTemperature(Number(e.currentTarget.value))}
               onPointerDown={(e) =>
                 e.currentTarget.setPointerCapture(e.pointerId)
