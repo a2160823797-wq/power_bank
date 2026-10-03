@@ -1,6 +1,6 @@
 import type { SerialApi, SerialPortLike } from './iap-protocol';
 
-export async function getSavedSerialPort(serial: SerialApi, key: string) {
+export async function getSavedSerialPort(serial: SerialApi, key: string, ports?: SerialPortLike[]) {
   let saved;
   try {
     const value = localStorage.getItem(key);
@@ -10,8 +10,7 @@ export async function getSavedSerialPort(serial: SerialApi, key: string) {
   } catch {
     return null;
   }
-  const ports = await serial.getPorts();
-  const matches = ports.filter((candidate) => {
+  const matches = (ports ?? await serial.getPorts()).filter((candidate) => {
     const info = candidate.getInfo();
     return (
       info.usbVendorId === saved.usbVendorId &&

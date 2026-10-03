@@ -9,7 +9,17 @@ import {
   useState,
 } from 'react';
 import type { SerialApi } from '@/lib/iap-protocol';
-import { NtcSerialSession, NtcTimeoutError } from '@/lib/ntc-protocol';
+import {
+  NtcSerialSession,
+  NtcTimeoutError,
+  NtcIdentityTimeoutError,
+} from '@/lib/ntc-protocol';
+import {
+  connectSelectedNtcDevice,
+  discoverNtcDevice,
+  NtcDeviceSelectionError,
+  NtcPortReleaseError,
+} from '@/lib/ntc-connection';
 import { getSavedSerialPort, rememberSerialPort } from '@/lib/serial-device';
 import { useLanguage } from '@/lib/language';
 
@@ -36,6 +46,7 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
     const [connected, setConnected] = useState(false);
     const [connectionBusy, setConnectionBusy] = useState(false);
     const [message, setMessage] = useState('');
+    const [selectionRequired, setSelectionRequired] = useState(false);
     const sessionRef = useRef<NtcSerialSession | null>(null);
     const controllerRef = useRef<AbortController | null>(null);
     const queuedTemperature = useRef<number | null>(null);
@@ -43,6 +54,7 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
     const connectionBusyRef = useRef(false);
     const taskRef = useRef<Promise<void> | null>(null);
     const connectPromiseRef = useRef<Promise<void> | null>(null);
+    const connectControllerRef = useRef<AbortController | null>(null);
     const mountedRef = useRef(true);
 
     function busy(value: boolean) {
@@ -80,6 +92,7 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
       mountedRef.current = true;
       return () => {
         mountedRef.current = false;
+        connectControllerRef.current?.abort();
         controllerRef.current?.abort();
         void sessionRef.current?.close().catch(() => undefined);
       };
@@ -89,41 +102,58 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
       if (connectionBusyRef.current || connected || !serialSupported) return;
       busy(true);
       setMessage('');
+      const controller = new AbortController();
+      connectControllerRef.current = controller;
       const operation = (async () => {
         try {
+          const serial = (navigator as Navigator & { serial: SerialApi }).serial;
+          let selectedPort = !automatic && selectionRequired
+            ? await serial.requestPort()
+            : null;
           await taskRef.current;
           await sessionRef.current?.close();
           sessionRef.current = null;
-          const serial = (navigator as Navigator & { serial: SerialApi })
-            .serial;
-          const port = automatic
-            ? await getSavedSerialPort(serial, LAST_PORT_KEY)
-            : await serial.requestPort();
-          if (!port || !mountedRef.current) return;
-          const session = new NtcSerialSession(
-            port,
-            () => undefined,
-            () => {
-              if (!mountedRef.current || sessionRef.current !== session) return;
-              cancelRequest();
-              setConnected(false);
-              setMessage(
-                t(
-                  '串口已断开，请重新连接',
-                  'Serial disconnected. Please reconnect.',
-                ),
-              );
-            },
-          );
-          sessionRef.current = session;
-          await session.open();
-          if (!mountedRef.current || sessionRef.current !== session) {
-            await session.close();
+          if (!mountedRef.current) return;
+          const onDisconnect = (session: NtcSerialSession) => {
+            if (!mountedRef.current || sessionRef.current !== session) return;
+            cancelRequest();
+            setConnected(false);
+            setMessage(t('设备已断开，请重新连接', 'Device disconnected. Please reconnect.'));
+          };
+          let result;
+          if (selectedPort) {
+            result = await connectSelectedNtcDevice(selectedPort, controller.signal, onDisconnect);
+          } else {
+            const ports = await serial.getPorts();
+            const savedPort = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
+            if (automatic && !savedPort) return;
+            if (!ports.length && !automatic) {
+              selectedPort = await serial.requestPort();
+              result = await connectSelectedNtcDevice(selectedPort, controller.signal, onDisconnect);
+            } else {
+              result = await discoverNtcDevice(ports, savedPort, controller.signal, onDisconnect);
+            }
+          }
+          if (!result) {
+            if (mountedRef.current) {
+              setSelectionRequired(true);
+              setMessage(t('未找到可用设备，请点击“选择设备”连接', 'No compatible device found. Click Select device to connect.'));
+            }
             return;
           }
+          sessionRef.current = result.session;
+          if (!mountedRef.current) {
+            await result.session.close();
+            return;
+          }
+          if (!result.session.isOpen) {
+            throw new Error(t('设备已断开，请重新连接', 'Device disconnected. Please reconnect.'));
+          }
+          setSelectionRequired(false);
           setConnected(true);
-          rememberSerialPort(LAST_PORT_KEY, port);
+          rememberSerialPort(LAST_PORT_KEY, result.port);
         } catch (reason) {
+          if (reason instanceof NtcPortReleaseError) sessionRef.current = reason.session;
           let detail =
             reason instanceof Error ? reason.message : String(reason);
           try {
@@ -132,8 +162,23 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
           } catch (closeError) {
             detail += `；${closeError instanceof Error ? closeError.message : String(closeError)}`;
           }
-          if (mountedRef.current) setMessage(detail);
+          if (mountedRef.current) {
+            if (!automatic && reason instanceof DOMException && reason.name === 'SecurityError') {
+              setSelectionRequired(true);
+            }
+            if (reason instanceof NtcDeviceSelectionError) {
+              setSelectionRequired(true);
+              detail = t('找到多台设备，请点击“选择设备”确认', 'Multiple devices found. Click Select device to choose.');
+            } else if (reason instanceof NtcIdentityTimeoutError) {
+              setSelectionRequired(true);
+              detail = t('无法识别设备，请确认 STM32 已烧录配套固件后重试', 'Device not recognized. Install the matching STM32 firmware and try again.');
+            }
+            if (!(reason instanceof DOMException && (reason.name === 'NotFoundError' || reason.name === 'AbortError'))) {
+              setMessage(detail);
+            }
+          }
         } finally {
+          if (connectControllerRef.current === controller) connectControllerRef.current = null;
           busy(false);
         }
       })();
@@ -210,10 +255,12 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
         }
       >
         {connectionBusy
-          ? t('处理中…', 'Working…')
+          ? t('正在连接…', 'Connecting…')
           : connected
             ? t('断开设备', 'Disconnect device')
-            : t('连接设备', 'Connect device')}
+            : selectionRequired
+              ? t('选择设备', 'Select device')
+              : t('连接设备', 'Connect device')}
       </button>
     );
     const feedback = (
