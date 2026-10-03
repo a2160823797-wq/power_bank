@@ -491,6 +491,7 @@ function Workspace() {
         <NtcSimulator
           ref={ntcRef}
           serialSupported={serialSupported}
+          active={view === 'ntc'}
           onConnectionBusyChange={(value) => {
             monitorBusyRef.current = value;
             setMonitorBusy(value);

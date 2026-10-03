@@ -3,12 +3,14 @@
 import {
   forwardRef,
   useEffect,
+  useEffectEvent,
   useImperativeHandle,
   useRef,
   useState,
 } from 'react';
 import type { SerialApi } from '@/lib/iap-protocol';
 import { NtcSerialSession, NtcTimeoutError } from '@/lib/ntc-protocol';
+import { getSavedSerialPort, rememberSerialPort } from '@/lib/serial-device';
 import { useLanguage } from '@/lib/language';
 
 export interface NtcSimulatorHandle {
@@ -16,12 +18,17 @@ export interface NtcSimulatorHandle {
 }
 interface Props {
   serialSupported: boolean | null;
+  active: boolean;
   onConnectionBusyChange?: (busy: boolean) => void;
 }
 const ACK_TIMEOUT_MS = 1000;
+const LAST_PORT_KEY = 'powerbank.ntc-last-serial-port';
 
 const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
-  function NtcSimulator({ serialSupported, onConnectionBusyChange }, ref) {
+  function NtcSimulator(
+    { serialSupported, active, onConnectionBusyChange },
+    ref,
+  ) {
     const { language } = useLanguage();
     const en = language === 'en';
     const t = (zh: string, english: string) => (en ? english : zh);
@@ -35,17 +42,22 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
     const sendingRef = useRef(false);
     const connectionBusyRef = useRef(false);
     const taskRef = useRef<Promise<void> | null>(null);
+    const connectPromiseRef = useRef<Promise<void> | null>(null);
+    const mountedRef = useRef(true);
 
     function busy(value: boolean) {
       connectionBusyRef.current = value;
-      setConnectionBusy(value);
-      onConnectionBusyChange?.(value);
+      if (mountedRef.current) {
+        setConnectionBusy(value);
+        onConnectionBusyChange?.(value);
+      }
     }
     function cancelRequest() {
       queuedTemperature.current = null;
       controllerRef.current?.abort();
     }
     async function disconnect() {
+      await connectPromiseRef.current;
       if (!sessionRef.current && !sendingRef.current) return;
       if (connectionBusyRef.current) throw new Error('串口正在切换，请稍候');
       busy(true);
@@ -64,54 +76,79 @@ const NtcSimulator = forwardRef<NtcSimulatorHandle, Props>(
       }
     }
     useImperativeHandle(ref, () => ({ disconnect }));
-    useEffect(
-      () => () => {
+    useEffect(() => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
         controllerRef.current?.abort();
         void sessionRef.current?.close().catch(() => undefined);
-      },
-      [],
-    );
+      };
+    }, []);
 
-    async function connect() {
-      if (connectionBusyRef.current) return;
+    async function connect(automatic = false) {
+      if (connectionBusyRef.current || connected || !serialSupported) return;
       busy(true);
       setMessage('');
-      try {
-        await taskRef.current;
-        await sessionRef.current?.close();
-        sessionRef.current = null;
-        const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-        const port = await serial.requestPort();
-        const session = new NtcSerialSession(
-          port,
-          () => undefined,
-          () => {
-            cancelRequest();
-            setConnected(false);
-            setMessage(
-              t(
-                '串口已断开，请重新连接',
-                'Serial disconnected. Please reconnect.',
-              ),
-            );
-          },
-        );
-        sessionRef.current = session;
-        await session.open();
-        setConnected(true);
-      } catch (reason) {
-        let detail = reason instanceof Error ? reason.message : String(reason);
+      const operation = (async () => {
         try {
+          await taskRef.current;
           await sessionRef.current?.close();
           sessionRef.current = null;
-        } catch (closeError) {
-          detail += `；${closeError instanceof Error ? closeError.message : String(closeError)}`;
+          const serial = (navigator as Navigator & { serial: SerialApi })
+            .serial;
+          const port = automatic
+            ? await getSavedSerialPort(serial, LAST_PORT_KEY)
+            : await serial.requestPort();
+          if (!port || !mountedRef.current) return;
+          const session = new NtcSerialSession(
+            port,
+            () => undefined,
+            () => {
+              if (!mountedRef.current || sessionRef.current !== session) return;
+              cancelRequest();
+              setConnected(false);
+              setMessage(
+                t(
+                  '串口已断开，请重新连接',
+                  'Serial disconnected. Please reconnect.',
+                ),
+              );
+            },
+          );
+          sessionRef.current = session;
+          await session.open();
+          if (!mountedRef.current || sessionRef.current !== session) {
+            await session.close();
+            return;
+          }
+          setConnected(true);
+          rememberSerialPort(LAST_PORT_KEY, port);
+        } catch (reason) {
+          let detail =
+            reason instanceof Error ? reason.message : String(reason);
+          try {
+            await sessionRef.current?.close();
+            sessionRef.current = null;
+          } catch (closeError) {
+            detail += `；${closeError instanceof Error ? closeError.message : String(closeError)}`;
+          }
+          if (mountedRef.current) setMessage(detail);
+        } finally {
+          busy(false);
         }
-        setMessage(detail);
-      } finally {
-        busy(false);
-      }
+      })();
+      connectPromiseRef.current = operation;
+      await operation;
+      if (connectPromiseRef.current === operation)
+        connectPromiseRef.current = null;
     }
+
+    const connectLastPort = useEffectEvent(() => {
+      void connect(true);
+    });
+    useEffect(() => {
+      if (serialSupported && active) connectLastPort();
+    }, [serialSupported, active]);
 
     function sendTemperature(value: number) {
       if (!sessionRef.current || !connected || connectionBusyRef.current)

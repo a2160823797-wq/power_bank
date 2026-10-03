@@ -1,5 +1,7 @@
 'use client';
 
+import { getSavedSerialPort, rememberSerialPort } from '@/lib/serial-device';
+
 import {
   forwardRef,
   useCallback,
@@ -250,26 +252,8 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
             .serial;
           let port;
           if (automatic) {
-            let saved;
-            try {
-              const value = localStorage.getItem(LAST_PORT_KEY);
-              if (!value) return;
-              saved = JSON.parse(value);
-              if (!saved || typeof saved !== 'object') return;
-            } catch {
-              return;
-            }
-            const ports = await serial.getPorts();
-            const matches = ports.filter((candidate) => {
-              const info = candidate.getInfo();
-              return (
-                info.usbVendorId === saved.usbVendorId &&
-                info.usbProductId === saved.usbProductId &&
-                info.bluetoothServiceClassId === saved.bluetoothServiceClassId
-              );
-            });
-            if (matches.length !== 1) return;
-            port = matches[0];
+            port = await getSavedSerialPort(serial, LAST_PORT_KEY);
+            if (!port) return;
           } else {
             port = await serial.requestPort();
           }
@@ -304,11 +288,7 @@ const BatteryMonitor = forwardRef<BatteryMonitorHandle, BatteryMonitorProps>(
             return;
           }
           setConnection('connected');
-          try {
-            localStorage.setItem(LAST_PORT_KEY, JSON.stringify(port.getInfo()));
-          } catch {
-            // 浏览器禁用本地存储时，仍保留本次串口连接
-          }
+          rememberSerialPort(LAST_PORT_KEY, port);
           await session.requestSnapshot();
         } catch (reason) {
           let releaseFailed = false;

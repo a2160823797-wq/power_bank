@@ -16,6 +16,14 @@ const {
   statusText,
 } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
+const savedDeviceSource = stripTypeScriptTypes(
+  await readFile(new URL('../lib/serial-device.ts', import.meta.url), 'utf8'),
+  { mode: 'strip' },
+);
+const { getSavedSerialPort, rememberSerialPort } = await import(
+  `data:text/javascript;base64,${Buffer.from(savedDeviceSource).toString('base64')}`
+);
+
 function replyFrame(temperature, resistanceOhms = 10000, code = 102, status = 0) {
   const frame = new Uint8Array(12);
   const view = new DataView(frame.buffer);
@@ -410,4 +418,111 @@ test('failed initialization plus failed cleanup remains retryable without an ope
   await assert.rejects(session.open(), /关闭失败/);
   await session.close();
   assert.equal(port.closeCount, 2);
+});
+
+function savedDeviceStorage(t) {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  const data = new Map();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key) => data.get(key) ?? null,
+      setItem: (key, value) => data.set(key, value),
+    },
+  });
+  t.after(() => {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    else delete globalThis.localStorage;
+  });
+  return data;
+}
+
+const rememberedPort = (info) => ({ getInfo: () => info });
+const automaticSerial = (ports) => ({
+  async getPorts() {
+    return ports;
+  },
+  async requestPort() {
+    assert.fail('automatic connection must not show the device picker');
+  },
+});
+
+test('a remembered device reconnects using only its uniquely matching authorized port', async (t) => {
+  savedDeviceStorage(t);
+  const port = rememberedPort({ usbVendorId: 0x10c4, usbProductId: 0xea60 });
+  rememberSerialPort('ntc', port);
+  const serial = automaticSerial([
+    rememberedPort({ usbVendorId: 0x1a86, usbProductId: 0x7523 }),
+    port,
+  ]);
+  assert.equal(await getSavedSerialPort(serial, 'ntc'), port);
+});
+
+test('unseen or damaged device records do not enumerate or request ports', async (t) => {
+  const data = savedDeviceStorage(t);
+  const serial = automaticSerial([]);
+  serial.getPorts = async () =>
+    assert.fail('no saved device must not enumerate ports');
+  for (const value of [undefined, '', '{broken', 'null', '25']) {
+    if (value === undefined) data.delete('ntc');
+    else data.set('ntc', value);
+    assert.equal(await getSavedSerialPort(serial, 'ntc'), null);
+  }
+});
+
+test('a missing or no-longer-authorized device stays disconnected without a picker', async (t) => {
+  savedDeviceStorage(t);
+  rememberSerialPort(
+    'ntc',
+    rememberedPort({ usbVendorId: 1, usbProductId: 2 }),
+  );
+  assert.equal(await getSavedSerialPort(automaticSerial([]), 'ntc'), null);
+  assert.equal(
+    await getSavedSerialPort(
+      automaticSerial([rememberedPort({ usbVendorId: 1, usbProductId: 3 })]),
+      'ntc',
+    ),
+    null,
+  );
+});
+
+test('two identical authorized adapters cannot select an arbitrary device', async (t) => {
+  savedDeviceStorage(t);
+  const info = { usbVendorId: 1, usbProductId: 2 };
+  rememberSerialPort('ntc', rememberedPort(info));
+  assert.equal(
+    await getSavedSerialPort(
+      automaticSerial([rememberedPort(info), rememberedPort(info)]),
+      'ntc',
+    ),
+    null,
+  );
+});
+
+test('battery and NTC device records remain independent, including Bluetooth identities', async (t) => {
+  savedDeviceStorage(t);
+  const battery = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
+  const ntc = rememberedPort({ bluetoothServiceClassId: 'ntc-device' });
+  rememberSerialPort('battery', battery);
+  rememberSerialPort('ntc', ntc);
+  const serial = automaticSerial([
+    battery,
+    rememberedPort({ bluetoothServiceClassId: 'other-device' }),
+    ntc,
+  ]);
+  assert.equal(await getSavedSerialPort(serial, 'battery'), battery);
+  assert.equal(await getSavedSerialPort(serial, 'ntc'), ntc);
+});
+
+test('blocked local storage preserves manual connection and suppresses automatic selection', async (t) => {
+  savedDeviceStorage(t);
+  localStorage.getItem = () => {
+    throw new Error('storage disabled');
+  };
+  localStorage.setItem = () => {
+    throw new Error('storage disabled');
+  };
+  const port = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
+  assert.doesNotThrow(() => rememberSerialPort('ntc', port));
+  assert.equal(await getSavedSerialPort(automaticSerial([port]), 'ntc'), null);
 });
