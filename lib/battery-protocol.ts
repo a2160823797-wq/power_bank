@@ -3,11 +3,30 @@ import { crc8, type SerialPortLike } from './iap-protocol';
 const BEIJING_OFFSET_SECONDS = 8 * 60 * 60;
 const COMMAND_INTERVAL_MS = 8;
 const MAX_PAYLOAD = 512;
+const SAFETY_RECORD_TYPES = [
+  'overvoltage-1', 'overvoltage-2', 'overvoltage-3', 'overvoltage-4',
+  'overvoltage-5', 'overvoltage-6', 'overvoltage-7', 'overvoltage-8',
+  'overvoltage-9', 'overvoltage-10', 'overvoltage-11', 'overvoltage-12',
+  'overvoltage-13', 'overvoltage-14', 'overvoltage-15', 'overvoltage-16',
+  'charge-overtemperature', 'discharge-overtemperature',
+] as const;
 
 export interface SafetyRecord {
-  type: 'overvoltage' | 'overtemperature';
+  type: (typeof SAFETY_RECORD_TYPES)[number];
   value: number; // 过充电压为 mV，异常温度为有符号整数℃
   timeUnixSeconds: number; // 转换后的 UTC 秒
+}
+
+export function selectSafetyRecords(records: readonly SafetyRecord[]) {
+  const counts = new Map<SafetyRecord['type'], number>();
+  return [...records]
+    .sort((a, b) => b.timeUnixSeconds - a.timeUnixSeconds)
+    .filter((record) => {
+      const count = counts.get(record.type) ?? 0;
+      if (count >= 5) return false;
+      counts.set(record.type, count + 1);
+      return true;
+    });
 }
 
 export interface BatteryState {
@@ -586,12 +605,13 @@ export class BatterySerialSession {
     if (
       data[0] === 1 &&
       data.length === 8 &&
-      data[1] <= 1
+      data[1] < SAFETY_RECORD_TYPES.length
     ) {
-      if (data[1] === 0 && view.getInt16(2, true) < 0)
+      const type = SAFETY_RECORD_TYPES[data[1]];
+      if (type.startsWith('overvoltage-') && view.getInt16(2, true) < 0)
         return false;
       const record: SafetyRecord = {
-        type: data[1] === 0 ? 'overvoltage' : 'overtemperature',
+        type,
         value: view.getInt16(2, true),
         timeUnixSeconds: deviceTimeToUnix(view.getUint32(4, true)),
       };

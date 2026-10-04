@@ -1,6 +1,7 @@
 'use client';
 
 import { CircleAlert, Loader2 } from 'lucide-react';
+import { selectSafetyRecords, type SafetyRecord } from '@/lib/battery-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
 const text = {
@@ -26,8 +27,9 @@ const text = {
   history: '异常记录',
   noRecords: '无异常记录',
   historyRecords: '电池异常记录',
-  overvoltage: '过充电压',
-  overtemperature: '高温',
+  overvoltage: (cell: string) => `第${cell}串过充`,
+  chargeOvertemperature: '充电高温',
+  dischargeOvertemperature: '放电高温',
   recordValue: '记录数值',
   occurrenceTime: '发生时间',
   noData: '暂无数据',
@@ -64,6 +66,13 @@ function formatTime(seconds: number) {
   return beijingHistoryTime.format(seconds * 1000);
 }
 
+function recordTypeLabel(type: SafetyRecord['type']) {
+  if (type.startsWith('overvoltage-'))
+    return text.overvoltage(type.slice('overvoltage-'.length));
+  if (type === 'charge-overtemperature') return text.chargeOvertemperature;
+  return text.dischargeOvertemperature;
+}
+
 function formatVoltage(millivolts: number | null) {
   return millivolts === null ? <EmptyValue /> : (millivolts / 1000).toFixed(3);
 }
@@ -88,7 +97,8 @@ export default function BatteryMonitor() {
     connect,
     disconnect,
   } = useDeviceConnection();
-  const visibleCellCount = battery.cellCount ?? 0;
+  const visibleCellCount = battery.cellCount ?? 2;
+  const visibleRecords = selectSafetyRecords(battery.records);
   const historyDescription = {
     unread: '',
     receiving: text.receiving(battery.records.length, battery.historyExpected),
@@ -236,7 +246,7 @@ export default function BatteryMonitor() {
             <div className="battery-panel-heading">
               <h2 id="battery-history-title">{text.history}</h2>
             </div>
-            {battery.records.length === 0 ? (
+            {visibleRecords.length === 0 ? (
               <div className="battery-history-empty" aria-live="polite">
                 {battery.historyStatus === 'complete' ? (
                   <h3>{text.noRecords}</h3>
@@ -255,13 +265,11 @@ export default function BatteryMonitor() {
                   className="battery-records"
                   aria-label={text.historyRecords}
                 >
-                  {battery.records.map((record, index) => (
+                  {visibleRecords.map((record, index) => (
                     <li key={index}>
                       <div className="battery-record-heading">
                         <h3>
-                          {record.type === 'overvoltage'
-                            ? text.overvoltage
-                            : text.overtemperature}
+                          {recordTypeLabel(record.type)}
                         </h3>
                       </div>
                       <p
@@ -269,16 +277,16 @@ export default function BatteryMonitor() {
                         aria-label={text.recordValue}
                       >
                         <span className="battery-record-number">
-                          {record.type === 'overvoltage'
+                          {record.type.startsWith('overvoltage-')
                             ? (record.value / 1000).toFixed(3)
                             : record.value.toFixed(0)}
                         </span>
                         <span className="battery-record-unit">
                           <span className="battery-record-degree">
-                            {record.type === 'overvoltage' ? '' : '°'}
+                            {record.type.startsWith('overvoltage-') ? '' : '°'}
                           </span>
                           <span className="battery-record-symbol">
-                            {record.type === 'overvoltage' ? 'V' : 'C'}
+                            {record.type.startsWith('overvoltage-') ? 'V' : 'C'}
                           </span>
                         </span>
                       </p>

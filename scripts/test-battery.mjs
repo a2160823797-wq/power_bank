@@ -26,6 +26,7 @@ const {
   BatteryFrameParser,
   batteryFrame,
   createBatteryState,
+  selectSafetyRecords,
 } = await import(
   moduleUrl(
     (await compile('../lib/battery-protocol.ts')).replace(
@@ -220,7 +221,7 @@ test('impossible payload lengths resynchronize without waiting for a forged leng
 });
 
 test('valid binary record containing an entire nested frame survives arbitrary fragmentation', () => {
-  const outer = frame(0x0a, [1, 1, ...frame(0x0b, [])]);
+  const outer = frame(0x0a, [1, 16, ...frame(0x0b, [])]);
   assert.equal(outer[3], 8);
   for (const chunkSize of [1, 2, 7, outer.length]) {
     const received = [];
@@ -331,20 +332,20 @@ test('removed device-time frames leave battery state and last-received time unch
 test('history keeps every record in order and needs matching begin, count and end before complete', async (t) => {
   const f = await fixture(t);
   await f.send(0x0a, [0, ...u16(3)]);
-  await f.send(0x0a, historyRecord({ type: 1, value: 65 }));
-  await f.send(0x8a, historyRecord({ type: 1, value: 65 }));
+  await f.send(0x0a, historyRecord({ type: 16, value: 65 }));
+  await f.send(0x8a, historyRecord({ type: 16, value: 65 }));
   assert.equal(f.state.records.length, 2);
   assert.deepEqual(f.state.records[0], f.state.records[1]);
   assert.equal(f.state.records[0].value, 65);
   assert.equal(f.state.historyStatus, 'receiving');
   await f.send(
     0x0a,
-    historyRecord({ type: 1, value: -12, time: timestamp + 60 }),
+    historyRecord({ type: 16, value: -12, time: timestamp + 60 }),
   );
   await f.send(0x0a, [2, ...u16(3)]);
   assert.equal(f.state.historyStatus, 'complete');
   assert.deepEqual(f.state.records[2], {
-    type: 'overtemperature',
+    type: 'charge-overtemperature',
     value: -12,
     timeUnixSeconds: timestamp + 60 - 28800,
   });
@@ -357,7 +358,7 @@ test('history keeps every record in order and needs matching begin, count and en
   await f.send(0x0a, [2, ...u16(1)]);
   assert.equal(f.state.historyStatus, 'complete');
   assert.deepEqual(f.state.records, [{
-    type: 'overvoltage',
+    type: 'overvoltage-1',
     value: 4500,
     timeUnixSeconds: timestamp - 28800,
   }]);
@@ -372,12 +373,84 @@ test('history time is always converted from Beijing seconds, including the proto
   assert.equal(f.state.records[0].timeUnixSeconds, -28800);
 });
 
+test('history decodes all 16 cell types and separate charge and discharge temperatures', async (t) => {
+  const f = await fixture(t);
+  await f.send(0x0a, [0, ...u16(18)]);
+  for (let type = 0; type < 18; type += 1) {
+    await f.send(0x0a, historyRecord({
+      type,
+      value: type < 16 ? 4400 + type : 50 + type,
+      time: timestamp + type,
+    }));
+  }
+  await f.send(0x0a, [2, ...u16(18)]);
+  assert.equal(f.state.historyStatus, 'complete');
+  assert.deepEqual(f.state.records.map((record) => record.type), [
+    ...Array.from({ length: 16 }, (_, index) => `overvoltage-${index + 1}`),
+    'charge-overtemperature',
+    'discharge-overtemperature',
+  ]);
+  assert.equal(f.state.records[15].value, 4415);
+  assert.equal(f.state.records[17].timeUnixSeconds, timestamp + 17 - 28800);
+});
+
+test('display selects the five newest records per type without changing source history', () => {
+  const types = [
+    ...Array.from({ length: 16 }, (_, index) => `overvoltage-${index + 1}`),
+    'charge-overtemperature',
+    'discharge-overtemperature',
+  ];
+  const records = Object.freeze(types.flatMap((type, index) =>
+    [3, 6, 0, 5, 2, 4, 1].map((hour) => Object.freeze({
+      type,
+      value: index < 16 ? 4400 + hour : 60 + hour,
+      timeUnixSeconds: timestamp + index * 100 + hour,
+    })),
+  ));
+  const before = structuredClone(records);
+  const selected = selectSafetyRecords(records);
+  assert.equal(selected.length, 18 * 5);
+  assert.deepEqual(selected.map((record) => record.timeUnixSeconds),
+    types.flatMap((_, index) =>
+      [2, 3, 4, 5, 6].map((hour) => timestamp + index * 100 + hour),
+    ).reverse());
+  for (const type of types)
+    assert.equal(selected.filter((record) => record.type === type).length, 5);
+  assert.deepEqual(records, before);
+  assert.deepEqual(selectSafetyRecords([]), []);
+});
+
+test('two-cell display selects at most 20 records without truncating transferred history or changing completion counts', async (t) => {
+  const f = await fixture(t);
+  const payloads = [0, 1, 16, 17].flatMap((type) =>
+    [3, 6, 0, 5, 2, 4, 1].map((hour) => historyRecord({
+      type,
+      value: type < 16 ? 4400 + hour : 60 + hour,
+      time: timestamp + hour * 3600 + type,
+    })),
+  );
+  await f.send(0x0a, [0, ...u16(payloads.length)]);
+  for (const payload of payloads) await f.send(0x0a, payload);
+  assert.equal(f.state.historyStatus, 'receiving');
+  assert.equal(f.state.historyExpected, 28);
+  assert.equal(f.state.records.length, 28);
+  await f.send(0x0a, [2, ...u16(payloads.length)]);
+  assert.equal(f.state.historyStatus, 'complete');
+  const before = structuredClone(f.state);
+  const selected = selectSafetyRecords(f.state.records);
+  assert.equal(selected.length, 20);
+  assert.equal(selected[0].type, 'discharge-overtemperature');
+  for (const type of ['overvoltage-1', 'overvoltage-2', 'charge-overtemperature', 'discharge-overtemperature'])
+    assert.equal(selected.filter((record) => record.type === type).length, 5);
+  assert.deepEqual(f.state, before);
+});
+
 test('eight-byte history preserves signed 16-bit boundaries and 8400 mV across fragmented and consecutive frames', async (t) => {
   for (const chunkSize of [1, 2, 7, 64]) {
     const f = await fixture(t);
     const records = [
-      historyRecord({ type: 1, value: -32768, time: timestamp }),
-      historyRecord({ type: 1, value: 32767, time: timestamp + 1 }),
+      historyRecord({ type: 16, value: -32768, time: timestamp }),
+      historyRecord({ type: 16, value: 32767, time: timestamp + 1 }),
       historyRecord({ type: 0, value: 8400, time: timestamp + 2 }),
     ];
     for (const record of records) assert.equal(record.length, 8);
@@ -392,9 +465,9 @@ test('eight-byte history preserves signed 16-bit boundaries and 8400 mV across f
     }
     assert.equal(f.state.historyStatus, 'complete');
     assert.deepEqual(f.state.records, [
-      { type: 'overtemperature', value: -32768, timeUnixSeconds: timestamp - 28800 },
-      { type: 'overtemperature', value: 32767, timeUnixSeconds: timestamp + 1 - 28800 },
-      { type: 'overvoltage', value: 8400, timeUnixSeconds: timestamp + 2 - 28800 },
+      { type: 'charge-overtemperature', value: -32768, timeUnixSeconds: timestamp - 28800 },
+      { type: 'charge-overtemperature', value: 32767, timeUnixSeconds: timestamp + 1 - 28800 },
+      { type: 'overvoltage-1', value: 8400, timeUnixSeconds: timestamp + 2 - 28800 },
     ]);
   }
 });
@@ -439,7 +512,7 @@ test('history count mismatch, malformed records and CRC corruption never claim c
   await f.send(0x0a, [0, 1, 0]);
   await f.send(0x0a, [...historyRecord(), 0]);
   await f.send(0x0a, historyRecord({ value: -1 }));
-  await f.send(0x0a, historyRecord({ type: 5 }));
+  await f.send(0x0a, historyRecord({ type: 18 }));
   assert.equal(f.state.records.length, 0);
   await f.send(0x0a, historyRecord());
   await f.send(0x0a, [2, 1, 0]);
@@ -877,7 +950,7 @@ test('IAP and NTC outer boundaries isolate nested battery identity even when for
 
 test('identity preserves partially received foreign and battery outer boundaries across its request', async (t) => {
   const nested = frame(8, identityPayload('A', 'B'));
-  const record = frame(0x0a, [1, 1, ...frame(0x0b, [])]);
+  const record = frame(0x0a, [1, 16, ...frame(0x0b, [])]);
   const damagedRecord = record.slice();
   damagedRecord[damagedRecord.length - 1] ^= 1;
   for (const [outer, split] of [
