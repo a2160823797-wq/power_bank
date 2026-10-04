@@ -15,6 +15,7 @@ const moduleUrl = (source) =>
   `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const configUrl = moduleUrl(await compile('../lib/iap-config.ts'));
 const {
+  IAP_BAUD_RATE,
   GENERIC_CONFIG,
   GENERIC_SETTINGS,
   X202_CONFIG,
@@ -26,7 +27,6 @@ const {
 const CW32L910_SETTINGS = {
   ...GENERIC_SETTINGS,
   protocol: 'iap-ymodem',
-  baudRate: '1500000',
   handshakeTimeoutMs: '9000',
   validation: 'cortex-m',
   maxAppSize: '0xBE00',
@@ -292,9 +292,6 @@ test('legacy and custom Cortex-M memory bounds, Thumb bit and unsigned addresses
 
 test('invalid settings are rejected before opening a port', () => {
   for (const patch of [
-    { baudRate: '' },
-    { baudRate: '-1' },
-    { baudRate: '1e6' },
     { maxAttempts: '0' },
     { maxAppSize: '0xGG' },
     { responseTimeoutMs: '1' },
@@ -365,7 +362,7 @@ for (const scenario of [
         (stage) => stages.push(stage),
       );
       assert.ok(done());
-      assert.equal(port.options.baudRate, scenario.config.baudRate);
+      assert.equal(port.options.baudRate, IAP_BAUD_RATE);
       assert.deepEqual(stages, ['handshake', 'writing', 'verifying']);
       assert.deepEqual(progress.at(-1), [100, data.length]);
       assert.deepEqual(
@@ -527,7 +524,8 @@ for (const { name, data, expected } of [
 test('default X202 memory bounds and response timeout match the Bootloader', () => {
   assert.deepEqual(DEFAULT_CONFIG, X202_CONFIG);
   assert.equal(DEFAULT_CONFIG.protocol, 'iap-ymodem');
-  assert.equal(DEFAULT_CONFIG.baudRate, 1500000);
+  assert.equal(IAP_BAUD_RATE, 1500000);
+  assert.equal('baudRate' in DEFAULT_CONFIG, false);
   assert.equal(DEFAULT_CONFIG.packetSize, 128);
   assert.equal(DEFAULT_CONFIG.responseTimeoutMs, 5000);
   assert.ok(DEFAULT_CONFIG.responseTimeoutMs < 7000);

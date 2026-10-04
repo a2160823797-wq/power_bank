@@ -1,4 +1,4 @@
-import { GENERIC_CONFIG, type IapConfig } from './iap-config';
+import { GENERIC_CONFIG, IAP_BAUD_RATE, type IapConfig } from './iap-config';
 
 const SOH = 0x01;
 const STX = 0x02;
@@ -202,7 +202,7 @@ export class IapSerialSession {
 
   async open() {
     await this.port.open({
-      baudRate: this.config.baudRate,
+      baudRate: IAP_BAUD_RATE,
       dataBits: 8,
       stopBits: 1,
       parity: 'none',

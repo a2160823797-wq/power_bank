@@ -1,8 +1,9 @@
+export const IAP_BAUD_RATE = 1500000;
+
 export type IapProtocol = 'ymodem' | 'iap-ymodem';
 
 export interface IapConfig {
   protocol: IapProtocol;
-  baudRate: number;
   packetSize: 128 | 1024;
   responseTimeoutMs: number;
   handshakeTimeoutMs: number;
@@ -13,7 +14,6 @@ export interface IapConfig {
 
 export interface IapSettings {
   protocol: IapProtocol;
-  baudRate: string;
   packetSize: '128' | '1024';
   responseTimeoutMs: string;
   handshakeTimeoutMs: string;
@@ -27,7 +27,6 @@ export interface IapSettings {
 
 export const GENERIC_SETTINGS: IapSettings = {
   protocol: 'ymodem',
-  baudRate: '1500000',
   packetSize: '1024',
   responseTimeoutMs: '10000',
   handshakeTimeoutMs: '30000',
@@ -78,7 +77,6 @@ export function resolveIapConfig(
       throw new Error('数据包应为 128 或 1024 字节');
     const config: IapConfig = {
       protocol: settings.protocol,
-      baudRate: integer(settings.baudRate, '波特率', 1, 4000000),
       packetSize: Number(settings.packetSize) as 128 | 1024,
       responseTimeoutMs: integer(
         settings.responseTimeoutMs,
