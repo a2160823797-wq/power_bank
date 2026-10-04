@@ -9,10 +9,6 @@ const css = (await readFile(resolve(buildDirectory, 'style.css'), 'utf8'))
   .replaceAll('</style', '<\\/style');
 const javascript = (await readFile(resolve(buildDirectory, 'app.js'), 'utf8'))
   .replaceAll('https://react.dev/errors/', 'React error ')
-  .replaceAll(
-    'https://base-ui.com/production-error',
-    'Base UI production error',
-  )
   .replaceAll('</script', '<\\/script');
 
 const html = `<!doctype html>
