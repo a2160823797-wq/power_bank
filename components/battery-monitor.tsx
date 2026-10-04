@@ -190,9 +190,6 @@ export default function BatteryMonitor() {
               >
                 <summary>
                   <span>{recordTypeLabel(type)}</span>
-                  <span className="battery-record-count">
-                    {records.length} 条
-                  </span>
                 </summary>
                 <ol
                   className="battery-records"

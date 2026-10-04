@@ -191,12 +191,6 @@
     outline-offset: 4px;
     border-radius: 4px;
   }
-  .battery-record-count {
-    margin-left: auto;
-    color: var(--muted-foreground);
-    font-size: 0.8125rem;
-    white-space: nowrap;
-  }
   .battery-records {
     display: grid;
     grid-template-columns: 1fr;
