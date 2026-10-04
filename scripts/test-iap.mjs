@@ -14,25 +14,15 @@ const compile = async (path) =>
 const moduleUrl = (source) =>
   `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const configUrl = moduleUrl(await compile('../lib/iap-config.ts'));
-const {
-  IAP_BAUD_RATE,
-  IAP_PACKET_SIZE,
-  GENERIC_CONFIG,
-  GENERIC_SETTINGS,
-  X202_CONFIG,
-  DEFAULT_CONFIG,
-  CW32L910_CONFIG,
-  resolveIapConfig,
-} = await import(configUrl);
-// Historical board configuration is retained only as a protocol regression fixture.
-const CW32L910_SETTINGS = {
-  ...GENERIC_SETTINGS,
-  handshakeTimeoutMs: '9000',
-  validation: 'cortex-m',
-  maxAppSize: '0xBE00',
-  appStart: '0x4000',
-  ramStart: '0x20000000',
-  ramSize: '0x1000',
+const { DEFAULT_CONFIG, IAP_BAUD_RATE, IAP_PACKET_SIZE } = await import(
+  configUrl
+);
+// This fixture belongs to the simulated receiving Bootloader, never to host configuration.
+const X202_BOARD = {
+  appCapacity: 0xb400,
+  appStart: 0x4800,
+  ramStart: 0x20000000,
+  ramSize: 0x2000,
 };
 const { IapSerialSession, crc8, crc16, crc32, validateFirmware } = await import(
   moduleUrl(
@@ -42,8 +32,7 @@ const { IapSerialSession, crc8, crc16, crc32, validateFirmware } = await import(
     ),
   )
 );
-
-function firmware(size, stack = 0x20001000, reset = 0x4101) {
+function firmware(size, stack = 0x20001000, reset = 0x4801) {
   const data = Uint8Array.from({ length: size }, (_, index) => index & 255);
   if (size >= 8) {
     const view = new DataView(data.buffer);
@@ -51,6 +40,23 @@ function firmware(size, stack = 0x20001000, reset = 0x4101) {
     view.setUint32(4, reset, true);
   }
   return data;
+}
+
+function boardAcceptsFirmware(data, board) {
+  // Model IAP_APP_Is_Valid in the receiving X202 Bootloader.
+  if (data.length < 8 || data.length > board.appCapacity) return false;
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const stack = view.getUint32(0, true);
+  const reset = view.getUint32(4, true);
+  const entry = (reset & 0xfffffffe) >>> 0;
+  return (
+    stack >= board.ramStart &&
+    stack <= board.ramStart + board.ramSize &&
+    (stack & 3) === 0 &&
+    (reset & 1) !== 0 &&
+    entry >= board.appStart &&
+    entry < board.appStart + data.length
+  );
 }
 
 class MockPort {
@@ -114,7 +120,7 @@ class MockPort {
   }
 }
 
-function receiver(config, data, behavior = {}) {
+function receiver(data, behavior = {}) {
   let upgradeMode = Boolean(behavior.startBootReady);
   let manifestAccepted = false;
   let phase = 'header';
@@ -124,6 +130,8 @@ function receiver(config, data, behavior = {}) {
   let retried = false;
   let retriedHeader = false;
   let retriedEnd = false;
+  let manifestCrc;
+  const receivedFirmware = new Uint8Array(data.length);
   const commands = [];
   const port = new MockPort(
     (packet) => {
@@ -134,7 +142,10 @@ function receiver(config, data, behavior = {}) {
         assert.equal(packet[3] | (packet[4] << 8), packet.length - 6);
         assert.equal(packet.at(-1), crc8(packet.subarray(2, -1)));
         commands.push(command);
-        assert.ok([0, 2, 3].includes(command), `unexpected IAP command ${command}`);
+        assert.ok(
+          [0, 2, 3].includes(command),
+          `unexpected IAP command ${command}`,
+        );
         if (command === 3) {
           assert.ok(
             upgradeMode,
@@ -144,10 +155,14 @@ function receiver(config, data, behavior = {}) {
           const view = new DataView(packet.buffer, packet.byteOffset + 5, 8);
           assert.equal(view.getUint32(0, true), data.length);
           assert.equal(view.getUint32(4, true), crc32(data));
+          manifestCrc = view.getUint32(4, true);
         }
         const accepted =
           (behavior.fallback && command === 2 && packet[5] === 2) ||
-          (behavior.rejectManifest && command === 3)
+          (command === 3 &&
+            (behavior.rejectManifest ||
+              (behavior.board &&
+                (data.length < 8 || data.length > behavior.board.appCapacity))))
             ? 0
             : 1;
         if (command === 2 && accepted) {
@@ -205,7 +220,12 @@ function receiver(config, data, behavior = {}) {
         assert.equal(packet[0], 1);
         assert.equal(packet[1], 0);
         assert.deepEqual(payload, new Uint8Array(128));
-        if (behavior.rejectFinal) {
+        if (
+          behavior.rejectFinal ||
+          crc32(receivedFirmware) !== manifestCrc ||
+          (behavior.board &&
+            !boardAcceptsFirmware(receivedFirmware, behavior.board))
+        ) {
           port.push([0x18, 0x18]);
           return;
         }
@@ -242,6 +262,8 @@ function receiver(config, data, behavior = {}) {
           port.push([0x15]);
           return;
         }
+        receivedFirmware.set(payload.subarray(0, count), offset);
+        if (behavior.corruptFlash && offset === 0) receivedFirmware[0] ^= 1;
         offset += count;
         block++;
         port.push([0x06]);
@@ -258,107 +280,89 @@ test('CRC reference vectors', () => {
   assert.equal(crc32(vector), 0xcbf43926);
 });
 
-test('generic BINs accept other architectures and sizes above the legacy limit', () => {
-  assert.equal(validateFirmware(new Uint8Array([1])), null);
-  assert.equal(validateFirmware(new Uint8Array(256 * 1024)), null);
+test('universal transport has fixed baud, packet size and internal timeouts', () => {
+  assert.equal(IAP_BAUD_RATE, 1500000);
+  assert.equal(IAP_PACKET_SIZE, 1024);
+  assert.deepEqual(DEFAULT_CONFIG, {
+    responseTimeoutMs: 5000,
+    handshakeTimeoutMs: 30000,
+    maxAttempts: 10,
+  });
+  assert.ok(DEFAULT_CONFIG.responseTimeoutMs < 7000);
+});
+
+test('host validates only nonempty firmware and the unsigned 32-bit manifest length', () => {
   assert.match(validateFirmware(new Uint8Array()), /不能为空/);
-  assert.match(
-    validateFirmware(new Uint8Array(1025), {
-      ...GENERIC_CONFIG,
-      maxAppSize: 1024,
-    }),
-    /容量/,
-  );
+  assert.match(validateFirmware({ length: 0x100000000 }), /32 位长度/);
+  assert.equal(validateFirmware({ length: 0xffffffff }), null);
+  assert.equal(validateFirmware(new Uint8Array([1])), null);
+  assert.equal(validateFirmware(new Uint8Array(1024)), null);
+  assert.equal(validateFirmware(firmware(0xb401)), null);
+  assert.equal(validateFirmware(firmware(256 * 1024 + 1)), null);
+  assert.equal(validateFirmware(firmware(1024, 0x80001000, 0x00000100)), null);
+  assert.equal(validateFirmware(firmware(1024, 0x20005000, 0x08004101)), null);
 });
 
-test('legacy and custom Cortex-M memory bounds, Thumb bit and unsigned addresses', () => {
-  const legacy = resolveIapConfig(CW32L910_SETTINGS).config;
-  assert.equal(validateFirmware(firmware(0xbe00), legacy), null);
-  assert.match(validateFirmware(firmware(0xbe01), legacy), /容量/);
-  assert.match(validateFirmware(firmware(256, 0x20000000), legacy), /栈顶/);
-  assert.match(validateFirmware(firmware(256, 0x20001004), legacy), /栈顶/);
-  assert.match(
-    validateFirmware(firmware(256, 0x20001000, 0xfe01), legacy),
-    /复位/,
+for (const data of [new Uint8Array(), { length: 0x100000000 }])
+  test(
+    'host rejects invalid manifest length before sending any serial bytes: ' +
+      data.length,
+    async () => {
+      const port = new MockPort();
+      const session = new IapSerialSession(port, () => {});
+      try {
+        await session.open();
+        await assert.rejects(
+          session.upgrade(
+            'firmware.bin',
+            data,
+            () => {},
+            () => {},
+          ),
+          /不能为空|32 位长度/,
+        );
+        assert.equal(port.writes.length, 0);
+      } finally {
+        await session.close();
+      }
+    },
   );
-  assert.match(
-    validateFirmware(firmware(256, 0x20001000, 0x4100), legacy),
-    /复位/,
-  );
-  const custom = resolveIapConfig({
-    ...CW32L910_SETTINGS,
-    appStart: '0x80004000',
-    maxAppSize: '0x40000',
-    ramSize: '0x5000',
-  }).config;
-  assert.equal(
-    validateFirmware(firmware(65536, 0x20005000, 0x80004101), custom),
-    null,
-  );
-  assert.match(
-    validateFirmware(firmware(65536, 0x20005000, 0x08004101), custom),
-    /复位/,
-  );
-});
-
-test('invalid settings are rejected before opening a port', () => {
-  for (const patch of [
-    { maxAttempts: '0' },
-    { maxAppSize: '0xGG' },
-    { responseTimeoutMs: '1' },
-    { validation: 'cortex-m' },
-  ])
-    assert.ok(
-      resolveIapConfig({ ...GENERIC_SETTINGS, ...patch }).error,
-      JSON.stringify(patch),
-    );
-  assert.ok(
-    resolveIapConfig({ ...CW32L910_SETTINGS, appStart: '0xfffff000' }).error,
-  );
-  assert.ok(
-    resolveIapConfig({ ...CW32L910_SETTINGS, ramSize: '0x1001' }).error,
-  );
-});
 
 for (const scenario of [
   {
-    name: 'automatic IAP + YMODEM 1K with initial buffered C and single EOT ACK',
-    config: GENERIC_CONFIG,
-    size: 49153,
+    name: 'default IAP + YMODEM 1K with initial buffered C and single EOT ACK',
+    config: DEFAULT_CONFIG,
+    size: 0xb3ff,
     behavior: { startBootReady: true, singleEot: true },
   },
   {
     name: 'generic 1K packets and sequence rollover',
-    config: GENERIC_CONFIG,
+    config: DEFAULT_CONFIG,
     size: 256 * 1024 + 1,
     behavior: {},
   },
   {
     name: 'NAK retries preserve header, data and final packet',
-    config: GENERIC_CONFIG,
+    config: DEFAULT_CONFIG,
     size: 1025,
     behavior: { retryHeader: true, retryData: true, retryEnd: true },
   },
   {
-    name: 'CW32 image to a 1K-capable receiver with command frames and CRC32',
-    config: resolveIapConfig(CW32L910_SETTINGS).config,
-    size: 2049,
+    name: 'single-byte non-Cortex-M firmware with universal command frames and CRC32',
+    config: DEFAULT_CONFIG,
+    size: 1,
     behavior: {},
   },
   {
-    name: 'IAP + Ymodem fallback entry command',
-    config: resolveIapConfig(CW32L910_SETTINGS).config,
+    name: 'IAP + YMODEM fallback entry command',
+    config: DEFAULT_CONFIG,
     size: 2049,
     behavior: { fallback: true },
   },
 ])
   test(scenario.name, async () => {
     const data = firmware(scenario.size);
-    const { port, commands, done } = receiver(
-      scenario.config,
-      data,
-      scenario.behavior,
-    );
+    const { port, commands, done } = receiver(data, scenario.behavior);
     const stages = [],
       progress = [];
     const session = new IapSerialSession(port, () => {}, scenario.config);
@@ -439,12 +443,12 @@ test('port close failure propagates and retry releases the physical port once', 
 
 test('timeout retries are bounded', async () => {
   const config = {
-    ...GENERIC_CONFIG,
+    ...DEFAULT_CONFIG,
     responseTimeoutMs: 5,
     maxAttempts: 2,
   };
   const data = firmware(1024);
-  const { port, commands } = receiver(config, data, { noHeaderAck: true });
+  const { port, commands } = receiver(data, { noHeaderAck: true });
   const session = new IapSerialSession(port, () => {}, config);
   try {
     await session.open();
@@ -468,7 +472,7 @@ test('timeout retries are bounded', async () => {
 
 test('cancel immediately wakes the handshake and sends CAN CAN', async () => {
   const port = new MockPort(() => {}, []);
-  const session = new IapSerialSession(port, () => {}, GENERIC_CONFIG);
+  const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
   try {
     await session.open();
     const transfer = session.upgrade(
@@ -492,10 +496,10 @@ test('cancel immediately wakes the handshake and sends CAN CAN', async () => {
 for (const reason of ['disconnect', 'device cancel'])
   test(`${reason} stops without retries`, async () => {
     const data = firmware(1024);
-    const { port, commands } = receiver(GENERIC_CONFIG, data, {
+    const { port, commands } = receiver(data, {
       stopAtData: reason,
     });
-    const session = new IapSerialSession(port, () => {}, GENERIC_CONFIG);
+    const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
     try {
       await session.open();
       await assert.rejects(
@@ -514,63 +518,70 @@ for (const reason of ['disconnect', 'device cancel'])
     }
   });
 
-for (const { name, data, expected } of [
-  { name: 'oversized APP', data: firmware(0xb401, 0x20002000, 0x48d9), expected: /容量/ },
-  { name: 'invalid stack', data: firmware(1024, 0x20002004, 0x48d9), expected: /栈顶/ },
-  { name: 'wrong APP address', data: firmware(1024, 0x20002000, 0x40d9), expected: /复位/ },
-  { name: 'entry outside BIN', data: firmware(128, 0x20002000, 0x48d9), expected: /文件范围/ },
+for (const { name, data, rejectionStage } of [
+  {
+    name: 'oversized APP',
+    data: firmware(0xb401, 0x20002000, 0x48d9),
+    rejectionStage: 'manifest',
+  },
+  {
+    name: 'short APP',
+    data: new Uint8Array([1]),
+    rejectionStage: 'manifest',
+  },
+  {
+    name: 'invalid stack',
+    data: firmware(1024, 0x20002004, 0x48d9),
+    rejectionStage: 'verification',
+  },
+  {
+    name: 'wrong APP address',
+    data: firmware(1024, 0x20002000, 0x40d9),
+    rejectionStage: 'verification',
+  },
+  {
+    name: 'entry outside BIN',
+    data: firmware(128, 0x20002000, 0x48d9),
+    rejectionStage: 'verification',
+  },
+  {
+    name: 'non-Cortex-M firmware',
+    data: new Uint8Array(1024),
+    rejectionStage: 'verification',
+  },
 ])
-  test(`default X202 rejects ${name} before sending any serial bytes`, async () => {
-    const port = new MockPort();
-    const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
-    try {
-      await session.open();
-      await assert.rejects(
-        session.upgrade('firmware.bin', data, () => {}, () => {}),
-        expected,
-      );
-      assert.equal(port.writes.length, 0);
-    } finally {
-      await session.close();
-    }
-  });
-
-test('default X202 memory bounds and response timeout match the Bootloader', () => {
-  assert.deepEqual(DEFAULT_CONFIG, X202_CONFIG);
-  assert.equal('protocol' in DEFAULT_CONFIG, false);
-  assert.equal(IAP_BAUD_RATE, 1500000);
-  assert.equal('baudRate' in DEFAULT_CONFIG, false);
-  assert.equal(IAP_PACKET_SIZE, 1024);
-  assert.equal('packetSize' in DEFAULT_CONFIG, false);
-  assert.equal(DEFAULT_CONFIG.responseTimeoutMs, 5000);
-  assert.ok(DEFAULT_CONFIG.responseTimeoutMs < 7000);
-  assert.equal(DEFAULT_CONFIG.maxAppSize, 0xb400);
-  assert.deepEqual(DEFAULT_CONFIG.vectorTable, {
-    appStart: 0x4800,
-    ramStart: 0x20000000,
-    ramSize: 0x2000,
-  });
-  assert.equal(
-    validateFirmware(firmware(0xb400, 0x20002000, 0x48d9), DEFAULT_CONFIG),
-    null,
+  test(
+    'X202 receiving Bootloader rejects ' +
+      name +
+      ' after host accepts transport',
+    async () => {
+      assert.equal(validateFirmware(data), null);
+      const { port, commands, done } = receiver(data, { board: X202_BOARD });
+      const session = new IapSerialSession(port, () => {});
+      try {
+        await session.open();
+        await assert.rejects(
+          session.upgrade(
+            'firmware.bin',
+            data,
+            () => {},
+            () => {},
+          ),
+          rejectionStage === 'manifest' ? /拒绝了固件大小或 CRC32/ : /设备取消/,
+        );
+        assert.deepEqual(commands, [0, 2, 3]);
+        assert.equal(done(), false);
+        if (rejectionStage === 'manifest')
+          assert.ok(port.writes.every((packet) => packet[0] === 0xaa));
+        else {
+          assert.ok(port.writes.some((packet) => packet[0] === 2));
+          assert.ok(port.writes.some((packet) => packet[0] === 0x04));
+        }
+      } finally {
+        await session.close();
+      }
+    },
   );
-  assert.match(
-    validateFirmware(firmware(0xb401, 0x20002000, 0x48d9), DEFAULT_CONFIG),
-    /容量/,
-  );
-  assert.match(
-    validateFirmware(firmware(1024, 0x20002004, 0x48d9), X202_CONFIG),
-    /栈顶/,
-  );
-  assert.match(
-    validateFirmware(firmware(1024, 0x20001f30, 0x40d9), X202_CONFIG),
-    /复位/,
-  );
-  assert.match(
-    validateFirmware(firmware(128, 0x20001f30, 0x48d9), X202_CONFIG),
-    /文件范围/,
-  );
-});
 
 for (const { name, behavior } of [
   { name: 'default APP entry', behavior: {} },
@@ -583,7 +594,10 @@ for (const { name, behavior } of [
   test(`X202 ${name}: manifest, 1K data, CRC and completion`, async () => {
     const config = { ...DEFAULT_CONFIG, responseTimeoutMs: 20 };
     const data = firmware(39448, 0x20001f30, 0x48d9);
-    const { port, commands, done } = receiver(config, data, behavior);
+    const { port, commands, done } = receiver(data, {
+      ...behavior,
+      board: X202_BOARD,
+    });
     const session = new IapSerialSession(port, () => {}, config);
     try {
       await session.open();
@@ -615,13 +629,25 @@ for (const { name, behavior } of [
 test('X202 missing final ACK retries are bounded and never report success', async () => {
   const config = { ...DEFAULT_CONFIG, responseTimeoutMs: 20, maxAttempts: 2 };
   const data = firmware(1024, 0x20002000, 0x48d9);
-  const { port, commands, done } = receiver(config, data, { noFinalAck: true });
+  const { port, commands, done } = receiver(data, {
+    noFinalAck: true,
+    board: X202_BOARD,
+  });
   const logs = [];
-  const session = new IapSerialSession(port, (message) => logs.push(message), config);
+  const session = new IapSerialSession(
+    port,
+    (message) => logs.push(message),
+    config,
+  );
   try {
     await session.open();
     await assert.rejects(
-      session.upgrade('firmware.bin', data, () => {}, () => {}),
+      session.upgrade(
+        'firmware.bin',
+        data,
+        () => {},
+        () => {},
+      ),
       /结束文件头 连续 2 次尝试失败/,
     );
     assert.deepEqual(commands, [0, 2, 3]);
@@ -631,7 +657,9 @@ test('X202 missing final ACK retries are bounded and never report success', asyn
     );
     assert.equal(finalPackets.length, config.maxAttempts);
     assert.deepEqual(finalPackets[0], finalPackets[1]);
-    assert.ok(logs.every((message) => !/固件传输完成|设备已确认接收/.test(message)));
+    assert.ok(
+      logs.every((message) => !/固件传输完成|设备已确认接收/.test(message)),
+    );
   } finally {
     await session.close();
   }
@@ -640,20 +668,26 @@ test('X202 missing final ACK retries are bounded and never report success', asyn
 for (const [name, config, behavior, expected] of [
   [
     'manifest rejected',
-    X202_CONFIG,
+    DEFAULT_CONFIG,
     { rejectManifest: true },
     /拒绝了固件大小或 CRC32/,
   ],
   [
     'final device verification rejected',
-    X202_CONFIG,
+    DEFAULT_CONFIG,
     { rejectFinal: true },
+    /设备取消/,
+  ],
+  [
+    'written firmware CRC32 mismatch',
+    DEFAULT_CONFIG,
+    { corruptFlash: true },
     /设备取消/,
   ],
 ])
   test(`X202 rejects ${name}`, async () => {
     const data = firmware(1024, 0x20001f30, 0x48d9);
-    const { port, done } = receiver(X202_CONFIG, data, behavior);
+    const { port, done } = receiver(data, { ...behavior, board: X202_BOARD });
     const session = new IapSerialSession(port, () => {}, config);
     try {
       await session.open();
@@ -675,15 +709,15 @@ for (const [name, config, behavior, expected] of [
   });
 
 test(
-  'supplied CW32 APP BIN validates and completes a 1K-capable simulated transfer',
+  'supplied APP BIN transfers to a 1K-capable simulated receiver without host memory profile',
   {
     skip: !process.env.IAP_TEST_FIRMWARE,
   },
   async () => {
     const data = new Uint8Array(await readFile(process.env.IAP_TEST_FIRMWARE));
-    assert.equal(validateFirmware(data, CW32L910_CONFIG), null);
-    const { port, done } = receiver(CW32L910_CONFIG, data);
-    const session = new IapSerialSession(port, () => {}, CW32L910_CONFIG);
+    assert.equal(validateFirmware(data, DEFAULT_CONFIG), null);
+    const { port, done } = receiver(data);
+    const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
     try {
       await session.open();
       await session.upgrade(
@@ -699,28 +733,35 @@ test(
   },
 );
 
-test('CW32 image transfers manifest and firmware to a 1K-capable receiver using only IAP commands', async () => {
-  const data = firmware(2048);
-  const { port, commands, done } = receiver(CW32L910_CONFIG, data);
-  const session = new IapSerialSession(port, () => {}, CW32L910_CONFIG);
+test('universal host transfers firmware at another target address to a 1K-capable simulated receiver', async () => {
+  const data = firmware(2048, 0x20001000, 0x4101);
+  const { port, commands, done } = receiver(data);
+  const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
   try {
     await session.open();
-    await session.upgrade('firmware.bin', data, () => {}, () => {});
+    await session.upgrade(
+      'firmware.bin',
+      data,
+      () => {},
+      () => {},
+    );
     assert.deepEqual(commands, [0, 2, 3]);
     assert.ok(done());
-  } finally { await session.close(); }
+  } finally {
+    await session.close();
+  }
 });
 
 test('CW32L910 current 128-only Bootloader rejects the first 1K data packet without retries or success', async () => {
   const data = firmware(2048, 0x20001000, 0x4101);
-  const { port, commands, done } = receiver(CW32L910_CONFIG, data, {
+  const { port, commands, done } = receiver(data, {
     reject1kData: true,
   });
   const logs = [];
   const session = new IapSerialSession(
     port,
     (message) => logs.push(message),
-    CW32L910_CONFIG,
+    DEFAULT_CONFIG,
   );
   try {
     await session.open();

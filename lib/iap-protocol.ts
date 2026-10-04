@@ -1,4 +1,9 @@
-import { GENERIC_CONFIG, IAP_BAUD_RATE, IAP_PACKET_SIZE, type IapConfig } from './iap-config';
+import {
+  DEFAULT_CONFIG,
+  IAP_BAUD_RATE,
+  IAP_PACKET_SIZE,
+  type IapConfig,
+} from './iap-config';
 
 const SOH = 0x01;
 const STX = 0x02;
@@ -130,31 +135,9 @@ export function crc32(data: Uint8Array, initial = 0) {
   return (crc ^ 0xffffffff) >>> 0;
 }
 
-export function validateFirmware(
-  data: Uint8Array,
-  config: IapConfig = GENERIC_CONFIG,
-) {
+export function validateFirmware(data: Uint8Array) {
   if (data.length === 0) return '固件文件不能为空';
   if (data.length > 0xffffffff) return '固件大小超出 32 位长度范围';
-  if (config.maxAppSize !== null && data.length > config.maxAppSize)
-    return `固件超过配置的应用区容量 ${config.maxAppSize} 字节`;
-  if (!config.vectorTable) return null;
-  if (data.length < 8) return '固件至少需要包含 8 字节向量表';
-  const { appStart, ramStart, ramSize } = config.vectorTable;
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const stack = view.getUint32(0, true);
-  const reset = view.getUint32(4, true);
-  const resetAddress = (reset & 0xfffffffe) >>> 0;
-  if (stack <= ramStart || stack > ramStart + ramSize || (stack & 3) !== 0) {
-    return '栈顶地址不在配置的 SRAM 范围内，或未按 4 字节对齐';
-  }
-  if (
-    (reset & 1) === 0 ||
-    resetAddress < appStart ||
-    resetAddress >= appStart + Math.min(config.maxAppSize!, data.length)
-  ) {
-    return `复位向量无效，请确认固件链接地址与应用区 0x${appStart.toString(16).toUpperCase()} 匹配，且入口位于固件文件范围内`;
-  }
   return null;
 }
 
@@ -197,7 +180,7 @@ export class IapSerialSession {
   constructor(
     private port: SerialPortLike,
     private log: LogCallback,
-    private config: IapConfig = GENERIC_CONFIG,
+    private config: IapConfig = DEFAULT_CONFIG,
   ) {}
 
   async open() {
@@ -345,7 +328,7 @@ export class IapSerialSession {
     onStage: StageCallback,
   ) {
     this.ensureActive();
-    const validationError = validateFirmware(firmware, this.config);
+    const validationError = validateFirmware(firmware);
     if (validationError) throw new Error(validationError);
     this.inbox.clear();
     await this.enterUpgradeMode(onStage);

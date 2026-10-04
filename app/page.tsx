@@ -9,7 +9,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
-import { DEFAULT_CONFIG } from '@/lib/iap-config';
 import BatteryMonitor from '@/components/battery-monitor';
 import {
   getWorkspaceView,
@@ -123,9 +122,7 @@ function Workspace() {
     statusRef.current = { stage, progress, firmware, connected };
   }, [stage, progress, firmware, connected]);
   const busy = running;
-  const validationError = firmware
-    ? validateFirmware(firmware.data, DEFAULT_CONFIG)
-    : null;
+  const validationError = firmware ? validateFirmware(firmware.data) : null;
   const displayedError = error || validationError;
   const showTransferProgress =
     ['writing', 'verifying'].includes(stage) ||
@@ -194,7 +191,7 @@ function Workspace() {
     setRunning(true);
     try {
       await withUpgrade(async (port) => {
-        const session = new IapSerialSession(port, log, DEFAULT_CONFIG);
+        const session = new IapSerialSession(port, log);
         sessionRef.current = session;
         try {
           await session.open();
