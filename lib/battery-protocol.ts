@@ -22,7 +22,6 @@ export interface BatteryState {
   batteryCode: string | null;
   manufacturer: string | null;
   productionDate: string | null;
-  rtcUnixSeconds: number | null;
   records: SafetyRecord[];
   historyStatus: 'unread' | 'receiving' | 'complete' | 'incomplete';
   historyExpected: number | null;
@@ -39,7 +38,6 @@ export function createBatteryState(): BatteryState {
     batteryCode: null,
     manufacturer: null,
     productionDate: null,
-    rtcUnixSeconds: null,
     records: [],
     historyStatus: 'unread',
     historyExpected: null,
@@ -63,8 +61,6 @@ function supportedLength(command: number, length: number) {
   switch (command & 0x7f) {
     case 0x02:
       return length >= 2 && length <= 256;
-    case 0x03:
-      return length === 4 || length === 8;
     case 0x08:
       return length >= 4 && length <= MAX_PAYLOAD;
     case 0x0a:
@@ -208,31 +204,6 @@ function ascii(bytes: Uint8Array) {
 
 function deviceTimeToUnix(seconds: number) {
   return seconds === 0 ? null : seconds - BEIJING_OFFSET_SECONDS;
-}
-
-function calendarTime(data: Uint8Array): number | null {
-  const year = data[0] | (data[1] << 8);
-  const [month, day, week, hour, minute, second] = data.subarray(2);
-  if (
-    year < 1970 ||
-    month < 1 ||
-    month > 12 ||
-    day < 1 ||
-    day > 31 ||
-    week > 6 ||
-    hour > 23 ||
-    minute > 59 ||
-    second > 59
-  )
-    return null;
-  const date = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
-  if (
-    date.getUTCFullYear() !== year ||
-    date.getUTCMonth() !== month - 1 ||
-    date.getUTCDate() !== day
-  )
-    return null;
-  return date.getTime() / 1000 - BEIJING_OFFSET_SECONDS;
 }
 
 interface BatteryCallbacks {
@@ -431,7 +402,6 @@ export class BatterySerialSession {
     );
     commands.push(
       [0x08, new Uint8Array()],
-      [0x03, new Uint8Array([1])],
       [0x0a, new Uint8Array([0])],
     );
     return this.request(commands);
@@ -617,16 +587,6 @@ export class BatterySerialSession {
       if (model === null || code === null) return false;
       this.state.batteryModel = model;
       this.state.batteryCode = code;
-      return true;
-    }
-    if (command === 0x03) {
-      if (data.length === 4)
-        this.state.rtcUnixSeconds = deviceTimeToUnix(view.getUint32(0, true));
-      else {
-        const time = calendarTime(data);
-        if (time === null) return false;
-        this.state.rtcUnixSeconds = time;
-      }
       return true;
     }
     if (command === 0x0a) return this.applyHistory(data, view);

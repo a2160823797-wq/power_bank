@@ -318,17 +318,18 @@ test('model, 255-byte encoding, manufacturer and production date remain untrunca
   assert.equal(f.state.batteryCode.length, 255);
 });
 
-test('RTC integer and calendar agree in Beijing time; zero remains unknown', async (t) => {
+test('removed device-time frames leave battery state and last-received time unchanged', async (t) => {
   const f = await fixture(t);
-  await f.send(3, u32(timestamp));
-  assert.equal(f.state.rtcUnixSeconds, timestamp - 28800);
-  await f.send(0x83, [...u16(2026), 10, 2, 5, 12, 34, 56]);
-  assert.equal(f.state.rtcUnixSeconds, timestamp - 28800);
+  await f.send(2, [1, ...u16(5000)]);
+  const state = f.state;
   const count = f.updates.length;
+  assert.equal('rtcUnixSeconds' in state, false);
+  await f.send(3, u32(timestamp));
+  await f.send(0x83, [...u16(2026), 10, 2, 5, 12, 34, 56]);
   await f.send(3, [...u16(2026), 2, 30, 1, 0, 0, 0]);
-  assert.equal(f.updates.length, count);
   await f.send(3, [0, 0, 0, 0]);
-  assert.equal(f.state.rtcUnixSeconds, null);
+  assert.equal(f.updates.length, count);
+  assert.deepEqual(f.state, state);
 });
 
 test('history needs matching begin, distinct record IDs and end before complete', async (t) => {
@@ -405,6 +406,8 @@ test('valid unrelated reference commands during history transfer are ignored wit
   await f.send(0x0a, [0, 1, 0]);
   await f.send(0x00, [1]);
   await f.send(0x01, [1, 65, 1, 66, ...u16(2026), 10, 2]);
+  await f.send(0x03, u32(timestamp));
+  await f.send(0x83, [...u16(2026), 10, 2, 5, 12, 34, 56]);
   await f.send(0x05, [0, 2, ...u32(20000)]);
   await f.send(0x02, [8, 50]);
   await f.send(0x0a, historyRecord());
@@ -420,13 +423,12 @@ test('snapshot and concurrent history requests queue whole frames without pollin
     [
       ...[0, 1, 2, 3, 13, 15, 16, 0x12].map((value) => [2, [value]]),
       [8, []],
-      [3, [1]],
       [10, [0]],
       [10, [0]],
     ],
   );
   await tick();
-  assert.equal(f.port.writes.length, 12);
+  assert.equal(f.port.writes.length, 11);
 });
 
 test('concurrent close cancels pending read and command queue, releases once, suppresses late callbacks', async (t) => {
