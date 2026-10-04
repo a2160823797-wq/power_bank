@@ -1,4 +1,4 @@
-import type { SerialPortLike } from './iap-protocol';
+import { IapSerialSession, type SerialPortLike } from './iap-protocol';
 import { BatterySerialSession, type BatteryState } from './battery-protocol';
 import { NtcSerialSession } from './ntc-protocol';
 import { SharedSerialTransport } from './shared-serial';
@@ -128,6 +128,17 @@ export class DeviceSerialSession {
     return kind === 'battery'
       ? this.battery!.identify(timeoutMs, signal)
       : this.ntc!.identify(timeoutMs, signal);
+  }
+
+  async identifyUpgrade(timeoutMs = 500) {
+    if (!this.isOpen) throw new Error('请先连接设备');
+    const session = new IapSerialSession(this.transport.createChannel(), () => {});
+    try {
+      await session.open();
+      await session.identify(timeoutMs);
+    } finally {
+      await session.close();
+    }
   }
 
   requestHistory() {

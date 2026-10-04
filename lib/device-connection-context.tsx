@@ -17,7 +17,7 @@ import {
   type BatteryState,
 } from './battery-protocol';
 import { NtcIdentityTimeoutError, type NtcReply } from './ntc-protocol';
-import type { SerialApi, SerialPortLike } from './iap-protocol';
+import type { IapSerialSession, SerialApi, SerialPortLike } from './iap-protocol';
 import { DeviceSerialSession } from './device-session';
 import {
   connectSelectedDevice,
@@ -26,6 +26,11 @@ import {
   DevicePortReleaseError,
 } from './device-connection';
 import { getSavedSerialPort, rememberSerialPort } from './serial-device';
+import {
+  discoverUpgradePort,
+  verifyUpgradePort,
+  UpgradePortReleaseError,
+} from './upgrade-connection';
 import { getWorkspaceView } from './workspace-view';
 
 type DeviceKind = 'battery' | 'ntc';
@@ -57,6 +62,7 @@ interface DeviceConnection {
 
 const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
 const LAST_KIND_KEY = 'powerbank.device-kind';
+const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-serial-port';
 const DeviceContext = createContext<DeviceConnection | null>(null);
 const subscribeSerialSupport = () => () => {};
 const getSerialSupport = () => 'serial' in navigator;
@@ -104,6 +110,8 @@ export function DeviceConnectionProvider({
   const connectTaskRef = useRef<Promise<void> | null>(null);
   const connectControllerRef = useRef<AbortController | null>(null);
   const closeTaskRef = useRef<Promise<void> | null>(null);
+  const upgradeSelectionRef = useRef(false);
+  const upgradeProbeRef = useRef<IapSerialSession | null>(null);
 
   const markBusy = useCallback((value: boolean) => {
     busyRef.current = value;
@@ -317,6 +325,7 @@ export function DeviceConnectionProvider({
       mountedRef.current = false;
       connectControllerRef.current?.abort();
       void sessionRef.current?.close().catch(() => undefined);
+      void upgradeProbeRef.current?.close().catch(() => undefined);
     };
   }, [serialSupported]);
 
@@ -328,11 +337,48 @@ export function DeviceConnectionProvider({
     if (session && !session.isOpen) throw new Error('请先重试断开设备连接');
     markBusy(true);
     try {
+      if (upgradeProbeRef.current) {
+        await upgradeProbeRef.current.close();
+        upgradeProbeRef.current = null;
+      }
       const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      const selectedPort = await serial.requestPort();
+      let selectedPort: SerialPortLike | null;
+      if (upgradeSelectionRef.current) {
+        selectedPort = await serial.requestPort();
+        await verifyUpgradePort(selectedPort, session);
+      } else {
+        const ports = await serial.getPorts();
+        if (!ports.length) {
+          upgradeSelectionRef.current = true;
+          selectedPort = await serial.requestPort();
+          await verifyUpgradePort(selectedPort, session);
+        } else {
+          const preferred = session?.port ??
+            await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
+          selectedPort = await discoverUpgradePort(ports, preferred, session);
+          if (!selectedPort) {
+            upgradeSelectionRef.current = true;
+            throw new Error('未找到升级设备，请再次点击“一键升级”选择并授权设备');
+          }
+        }
+      }
+      upgradeSelectionRef.current = false;
+      rememberSerialPort(LAST_UPGRADE_PORT_KEY, selectedPort);
       if (session && selectedPort === session.port)
         return await session.withUpgrade(operation);
       return await operation(selectedPort);
+    } catch (reason) {
+      if (reason instanceof UpgradePortReleaseError)
+        upgradeProbeRef.current = reason.session;
+      if (reason instanceof DeviceSelectionError) {
+        upgradeSelectionRef.current = true;
+        throw new Error('发现多台升级设备，请再次点击“一键升级”选择目标设备');
+      }
+      if (reason instanceof DOMException && reason.name === 'SecurityError') {
+        upgradeSelectionRef.current = true;
+        throw new Error('需要授权升级设备，请再次点击“一键升级”选择设备');
+      }
+      throw reason;
     } finally {
       markBusy(false);
     }

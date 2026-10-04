@@ -306,11 +306,15 @@ export class IapSerialSession {
     }
   }
 
+  async identify(timeoutMs = this.config.responseTimeoutMs) {
+    const ack = await this.command(0, new Uint8Array(), timeoutMs);
+    if (ack[0] !== 1) throw new Error('设备在线确认失败');
+  }
+
   private async enterUpgradeMode(onStage: StageCallback) {
     onStage('handshake');
     this.log('正在确认设备在线');
-    const ack = await this.command(0);
-    if (ack[0] !== 1) throw new Error('设备在线确认失败');
+    await this.identify();
     this.log('设备握手成功', 'success');
     this.log('正在切换到 Bootloader');
     const request = await this.command(2, new Uint8Array([2]));

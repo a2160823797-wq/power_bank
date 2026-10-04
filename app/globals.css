@@ -236,38 +236,11 @@
   .transfer-status {
     margin-top: 26px;
   }
-  .status-heading {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    color: var(--foreground);
-    font-size: 0.8125rem;
-    line-height: 1.6;
-  }
-  .status-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-weight: 500;
-  }
-  .status-label > svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    color: var(--accent-foreground);
-  }
-  .status-percent {
-    flex-shrink: 0;
-    color: var(--muted-foreground);
-    font-variant-numeric: tabular-nums;
-  }
   .transfer-progress {
     display: block;
     width: 100%;
     height: 5px;
     overflow: hidden;
-    margin-top: 12px;
     border: 0;
     border-radius: 999px;
     appearance: none;
@@ -288,32 +261,17 @@
     border-radius: 999px;
     background: var(--accent-foreground);
   }
-  .status-description {
-    margin-top: 10px;
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    line-height: 1.7;
-  }
-  .transfer-status[data-state='success'] .status-label,
-  .transfer-status[data-state='success'] .status-label > svg {
-    color: var(--success);
-  }
   .transfer-status[data-state='success'] .transfer-progress::-webkit-progress-value {
     background: var(--success);
   }
   .transfer-status[data-state='success'] .transfer-progress::-moz-progress-bar {
     background: var(--success);
   }
-  .transfer-status[data-state='error'] .status-label,
-  .transfer-status[data-state='error'] .status-label > svg {
-    color: var(--destructive);
-  }
   .actions {
     margin-top: 26px;
     text-align: center;
   }
-  .primary-action,
-  .secondary-action {
+  .primary-action {
     display: inline-flex;
     width: 100%;
     min-height: 48px;
@@ -332,13 +290,6 @@
     background: var(--primary);
     color: var(--primary-foreground);
   }
-  .primary-action > svg,
-  .secondary-action > svg {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-    stroke-width: 1.8;
-  }
   .primary-action:not(:disabled):hover {
     background: #006edc;
     box-shadow: 0 3px 14px rgb(0 113 227 / 24%);
@@ -350,19 +301,6 @@
   .primary-action:disabled {
     background: #303034;
     color: #85858d;
-  }
-  .secondary-action {
-    background: var(--secondary);
-    color: var(--accent-foreground);
-  }
-  .secondary-action:not(:disabled):hover {
-    background: #36363a;
-  }
-  .secondary-action:disabled {
-    color: #85858d;
-  }
-  .actions > button + button {
-    margin-top: 10px;
   }
   .error-message {
     display: flex;
@@ -437,15 +375,6 @@
   }
   .upgrade-logs > p + p {
     margin-top: 4px;
-  }
-  .icon-spinner {
-    animation: icon-spin 900ms linear infinite;
-  }
-}
-
-@keyframes icon-spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

@@ -1,13 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import {
-  ArrowRight,
-  ArrowUpToLine,
-  Check,
-  CircleAlert,
-  Loader2,
-} from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import BatteryMonitor from '@/components/battery-monitor';
 import {
@@ -43,20 +37,13 @@ const t = {
   replaceFirmware: '更换固件',
   readingFirmware: '正在读取固件…',
   pleaseWait: '请稍候',
-  clickToReplace: ' · 点击更换',
+  clickToReplace: '点击更换',
   dropFirmware: '也可将 .bin 文件拖到这里',
   transferProgress: '固件传输进度',
-  received: '设备已确认接收完成。',
-  selectDevice: '请在浏览器弹窗中选择你的设备。',
-  upgradeStopped: '升级已停止，请查看下方提示。',
-  keepConnected: '请保持设备连接，等待升级完成。',
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
   hideDetails: '收起详情',
   showDetails: '查看详情',
-  nextUpgrade: '下一次升级',
-  upgrading: '正在升级…',
   startUpgrade: '一键升级',
-  cancelUpgrade: '取消升级',
   statusToolTitle: '读取固件升级状态',
   statusToolDescription:
     '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
@@ -236,10 +223,6 @@ function Workspace() {
       runningRef.current = false;
       setRunning(false);
     }
-  }
-
-  async function cancelUpgrade() {
-    await sessionRef.current?.cancel();
   }
 
   function changeView(nextView: WorkspaceView) {
@@ -425,49 +408,28 @@ function Workspace() {
                     ? firmware.file.name
                     : t.chooseFirmware}
               </span>
-              <span className="file-description">
-                {loadingFile
-                  ? t.pleaseWait
-                  : firmware
-                    ? `${formatBytes(firmware.data.length)}${busy ? '' : t.clickToReplace}`
-                    : t.dropFirmware}
-              </span>
+              {(!firmware || !busy) && (
+                <span className="file-description">
+                  {loadingFile
+                    ? t.pleaseWait
+                    : firmware
+                      ? t.clickToReplace
+                      : t.dropFirmware}
+                </span>
+              )}
             </span>
           </button>
           {(busy || showTransferProgress || stage === 'success') && (
             <div className="transfer-status" data-state={stage}>
-              <div className="status-heading">
-                <output className="status-label" aria-live="polite">
-                  {stage === 'success' ? (
-                    <Check aria-hidden="true" />
-                  ) : stage === 'error' ? (
-                    <CircleAlert aria-hidden="true" />
-                  ) : (
-                    <Loader2 className="icon-spinner" aria-hidden="true" />
-                  )}
-                  {t.stages[stage]}
-                </output>
-                {(showTransferProgress || stage === 'success') && (
-                  <span className="status-percent">{progress}%</span>
-                )}
-              </div>
-              {(showTransferProgress || stage === 'success') && (
-                <progress
-                  className="transfer-progress"
-                  value={progress}
-                  max={100}
-                  aria-label={t.transferProgress}
-                />
-              )}
-              <p className="status-description">
-                {stage === 'success'
-                  ? t.received
-                  : stage === 'connecting'
-                    ? t.selectDevice
-                    : stage === 'error'
-                      ? t.upgradeStopped
-                      : t.keepConnected}
-              </p>
+              <output className="sr-only" aria-live="polite">
+                {t.stages[stage]}
+              </output>
+              <progress
+                className="transfer-progress"
+                value={showTransferProgress || stage === 'success' ? progress : undefined}
+                max={100}
+                aria-label={t.transferProgress}
+              />
             </div>
           )}
           {displayedError && (
@@ -499,46 +461,21 @@ function Workspace() {
               )}
             </div>
           )}
-          {firmware && (
+          {firmware && !busy && stage !== 'success' && (
             <div className="actions">
-              {stage === 'success' && !busy ? (
-                <button
-                  type="button"
-                  className="primary-action"
-                  onClick={() => {
-                    setStage('ready');
-                    setProgress(0);
-                    setError('');
-                  }}
-                >
-                  {t.nextUpgrade} <ArrowRight aria-hidden="true" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="primary-action"
-                  disabled={
-                    busy ||
-                    connectionBusy ||
-                    loadingFile ||
-                    !serialSupported ||
-                    Boolean(validationError)
-                  }
-                  onClick={startUpgrade}
-                >
-                  {busy ? t.upgrading : t.startUpgrade}
-                  {!busy && <ArrowUpToLine aria-hidden="true" />}
-                </button>
-              )}
-              {busy && stage !== 'connecting' && (
-                <button
-                  type="button"
-                  className="secondary-action"
-                  onClick={cancelUpgrade}
-                >
-                  {t.cancelUpgrade}
-                </button>
-              )}
+              <button
+                type="button"
+                className="primary-action"
+                disabled={
+                  connectionBusy ||
+                  loadingFile ||
+                  !serialSupported ||
+                  Boolean(validationError)
+                }
+                onClick={startUpgrade}
+              >
+                {t.startUpgrade}
+              </button>
             </div>
           )}
         </section>
