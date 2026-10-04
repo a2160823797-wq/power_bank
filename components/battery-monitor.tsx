@@ -254,12 +254,15 @@ export default function BatteryMonitor() {
                     {historyDescription}
                   </p>
                 )}
-                <ul
+                <ol
                   className="battery-records"
                   aria-label={text.historyRecords}
                 >
                   {visibleRecords.map((record, index) => (
                     <li key={index}>
+                      <span className="battery-record-index" aria-hidden="true">
+                        {index + 1}
+                      </span>
                       <div className="battery-record-heading">
                         <h3>
                           {recordTypeLabel(record.type)}
@@ -291,7 +294,7 @@ export default function BatteryMonitor() {
                       </p>
                     </li>
                   ))}
-                </ul>
+                </ol>
               </>
             )}
           </section>
