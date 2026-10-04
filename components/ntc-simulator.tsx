@@ -17,17 +17,7 @@ export default function NtcSimulator() {
   } = useDeviceConnection();
   const [temperature, setTemperature] = useState(25);
   const [temperatureInput, setTemperatureInput] = useState('25');
-  const [feedbackState, setFeedbackState] = useState({
-    connected,
-    message: '',
-  });
-  if (feedbackState.connected !== connected) {
-    setFeedbackState({ connected, message: '' });
-  }
-  const message = feedbackState.message;
-  function setMessage(value: string) {
-    setFeedbackState({ connected, message: value });
-  }
+  const [message, setMessage] = useState('');
   const controllerRef = useRef<AbortController | null>(null);
   const queuedTemperature = useRef<number | null>(null);
   const sendingRef = useRef(false);
@@ -43,6 +33,7 @@ export default function NtcSimulator() {
   }, []);
 
   useEffect(() => {
+    setMessage('');
     if (!connected) {
       queuedTemperature.current = null;
       controllerRef.current?.abort();

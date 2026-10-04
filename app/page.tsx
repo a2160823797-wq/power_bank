@@ -32,11 +32,10 @@ export default function Home() {
 
 function Workspace() {
   const [view, setView] = useState(getWorkspaceView);
-  const [running, setRunning] = useState(false);
   const { connectionBusy } = useDeviceConnection();
 
   function changeView(nextView: WorkspaceView) {
-    if (!running && !connectionBusy) {
+    if (!connectionBusy) {
       setView(nextView);
       setWorkspaceView(nextView);
     }
@@ -74,7 +73,7 @@ function Workspace() {
             <button
               type="button"
               aria-pressed={view === 'battery'}
-              disabled={running || connectionBusy}
+              disabled={connectionBusy}
               onClick={() => changeView('battery')}
             >
               {t.battery}
@@ -82,7 +81,7 @@ function Workspace() {
             <button
               type="button"
               aria-pressed={view === 'upgrade'}
-              disabled={running || connectionBusy}
+              disabled={connectionBusy}
               onClick={() => changeView('upgrade')}
             >
               {t.upgrade}
@@ -90,7 +89,7 @@ function Workspace() {
             <button
               type="button"
               aria-pressed={view === 'ntc'}
-              disabled={running || connectionBusy}
+              disabled={connectionBusy}
               onClick={() => changeView('ntc')}
             >
               {t.ntc}
@@ -108,11 +107,7 @@ function Workspace() {
       <div className="ntc-workspace" hidden={view !== 'ntc'}>
         <NtcSimulator />
       </div>
-      <FirmwareUpdater
-        active={view === 'upgrade'}
-        running={running}
-        onRunningChange={setRunning}
-      />
+      <FirmwareUpdater active={view === 'upgrade'} />
     </main>
   );
 }

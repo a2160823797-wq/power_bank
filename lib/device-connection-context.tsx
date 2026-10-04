@@ -6,7 +6,6 @@ import {
   useEffectEvent,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 import {
@@ -38,7 +37,7 @@ type Connection =
   | 'disconnecting'
   | 'release-error';
 interface DeviceConnection {
-  serialSupported: boolean | null;
+  serialSupported: boolean;
   connection: Connection;
   connectionBusy: boolean;
   connected: boolean;
@@ -60,9 +59,6 @@ const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
 const LAST_KIND_KEY = 'powerbank.device-kind';
 const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-serial-port';
 const DeviceContext = createContext<DeviceConnection | null>(null);
-const subscribeSerialSupport = () => () => {};
-const getSerialSupport = () => 'serial' in navigator;
-const getServerSerialSupport = () => null;
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
@@ -85,11 +81,7 @@ export function DeviceConnectionProvider({
 }: {
   children: ReactNode;
 }) {
-  const serialSupported = useSyncExternalStore<boolean | null>(
-    subscribeSerialSupport,
-    getSerialSupport,
-    getServerSerialSupport,
-  );
+  const serialSupported = 'serial' in navigator;
   const [connection, setConnection] = useState<Connection>('disconnected');
   const [battery, setBattery] = useState(createBatteryState);
   const [error, setError] = useState('');

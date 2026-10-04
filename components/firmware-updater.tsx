@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
+import { useRef, useState } from 'react';
+import { IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
 type Stage =
@@ -11,7 +11,7 @@ type Stage =
   | 'verifying'
   | 'success'
   | 'error';
-type FirmwareInfo = { file: File; data: Uint8Array; crc: number };
+type FirmwareInfo = { file: File; data: Uint8Array };
 
 const t = {
   upgrade: '固件升级',
@@ -24,15 +24,6 @@ const t = {
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
   startUpgrade: '一键升级',
   restartUpgrade: '再次升级',
-  statusToolTitle: '读取固件升级状态',
-  statusToolDescription:
-    '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
-  deviceConnecting: '握手中',
-  deviceConnected: '已连接',
-  deviceDisconnected: '未连接',
-  cancelToolTitle: '取消固件升级',
-  cancelToolDescription: '仅在升级正在进行时向设备发送取消帧，并停止当前升级。',
-  noActiveUpgrade: '当前没有正在进行的固件升级',
   stages: {
     idle: '等待固件',
     ready: '准备就绪',
@@ -45,20 +36,8 @@ const t = {
   } satisfies Record<Stage, string>,
 };
 
-function formatHex(value: number) {
-  return `0x${value.toString(16).toUpperCase().padStart(8, '0')}`;
-}
-
-export default function FirmwareUpdater({
-  active,
-  running,
-  onRunningChange,
-}: {
-  active: boolean;
-  running: boolean;
-  onRunningChange: (value: boolean) => void;
-}) {
-  const { serialSupported, connectionBusy, connected, withUpgrade } =
+export default function FirmwareUpdater({ active }: { active: boolean }) {
+  const { serialSupported, connectionBusy, withUpgrade } =
     useDeviceConnection();
   const [loadingFile, setLoadingFile] = useState(false);
   const runningRef = useRef(false);
@@ -68,22 +47,10 @@ export default function FirmwareUpdater({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
-  const sessionRef = useRef<IapSerialSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const statusRef = useRef({
+  const running = ['connecting', 'preparing', 'writing', 'verifying'].includes(
     stage,
-    progress,
-    firmware,
-    connected,
-  });
-  useEffect(() => {
-    statusRef.current = {
-      stage,
-      progress,
-      firmware,
-      connected,
-    };
-  });
+  );
   const validationError = firmware ? validateFirmware(firmware.data) : null;
   const displayedError = error || validationError;
   const showTransferStatus =
@@ -107,8 +74,7 @@ export default function FirmwareUpdater({
     try {
       const data = new Uint8Array(await file.arrayBuffer());
       if (request !== fileLoadRef.current) return;
-      const info = { file, data, crc: crc32(data) };
-      setFirmware(info);
+      setFirmware({ file, data });
       setStage('ready');
       setProgress(0);
     } catch (reason) {
@@ -137,11 +103,9 @@ export default function FirmwareUpdater({
     setProgress(0);
     setStage('connecting');
     runningRef.current = true;
-    onRunningChange(true);
     try {
       await withUpgrade(async (port) => {
         const session = new IapSerialSession(port);
-        sessionRef.current = session;
         try {
           await session.open();
           await session.upgrade(
@@ -153,7 +117,6 @@ export default function FirmwareUpdater({
           );
         } finally {
           await session.close();
-          sessionRef.current = null;
         }
       });
       setStage('success');
@@ -168,83 +131,9 @@ export default function FirmwareUpdater({
         setStage('ready');
       }
     } finally {
-      sessionRef.current = null;
       runningRef.current = false;
-      onRunningChange(false);
     }
   }
-
-  useEffect(() => {
-    const modelContext = (
-      document as Document & {
-        modelContext?: {
-          registerTool: (
-            tool: Record<string, unknown>,
-            options?: { signal?: AbortSignal },
-          ) => void | Promise<void>;
-        };
-      }
-    ).modelContext;
-    if (!modelContext?.registerTool) return;
-    const lifecycle = new AbortController();
-    const register = (tool: Record<string, unknown>) => {
-      try {
-        void Promise.resolve(
-          modelContext.registerTool(tool, { signal: lifecycle.signal }),
-        ).catch(() => undefined);
-      } catch {}
-    };
-    register({
-      name: 'get_firmware_upgrade_status',
-      title: t.statusToolTitle,
-      description: t.statusToolDescription,
-      inputSchema: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: true, untrustedContentHint: false },
-      execute() {
-        const current = statusRef.current;
-        return {
-          stage: current.stage,
-          progress: current.progress,
-          device:
-            current.stage === 'connecting'
-              ? t.deviceConnecting
-              : ['preparing', 'writing', 'verifying'].includes(current.stage)
-                ? t.deviceConnected
-                : current.connected
-                  ? t.deviceConnected
-                  : t.deviceDisconnected,
-          firmware: current.firmware
-            ? {
-                name: current.firmware.file.name,
-                size: current.firmware.data.length,
-                crc32: formatHex(current.firmware.crc),
-              }
-            : null,
-        };
-      },
-    });
-    register({
-      name: 'cancel_firmware_upgrade',
-      title: t.cancelToolTitle,
-      description: t.cancelToolDescription,
-      inputSchema: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false,
-      },
-      annotations: { readOnlyHint: false, untrustedContentHint: false },
-      async execute() {
-        if (!sessionRef.current) throw new Error(t.noActiveUpgrade);
-        await sessionRef.current.cancel();
-        return { cancelled: true };
-      },
-    });
-    return () => lifecycle.abort();
-  }, []);
 
   if (!active) return null;
 
