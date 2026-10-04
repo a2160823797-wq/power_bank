@@ -4,26 +4,21 @@
     max-width: 1040px;
     flex: 1;
     margin-inline: auto;
-    padding-bottom: 56px;
+    padding-bottom: 40px;
   }
   .battery-metrics {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    margin-bottom: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
   }
   .battery-metric {
     min-width: 0;
-    padding: 24px;
-    border: 1px solid #303035;
-    border-radius: 14px;
-    background: #171719;
   }
   .battery-field-label,
   .battery-panel h2 {
     color: var(--foreground);
     font-weight: 600;
-    font-size: 1.25rem;
+    font-size: 1rem;
     line-height: 1.5;
   }
   .battery-field-label {
@@ -32,7 +27,7 @@
     gap: 8px;
   }
   .battery-metric-value {
-    margin-top: 16px;
+    margin-top: 8px;
     font-size: 2rem;
     font-weight: 600;
     line-height: 1.15;
@@ -47,17 +42,9 @@
     vertical-align: baseline;
     letter-spacing: 0;
   }
-  .battery-details-grid {
-    display: grid;
-    grid-template-columns: 0.9fr 1.3fr;
-    gap: 16px;
-  }
-  .battery-details-grid > .battery-panel:only-child {
-    grid-column: 1 / -1;
-  }
   .battery-panel {
     min-width: 0;
-    padding: 24px;
+    padding: 20px;
     border: 1px solid #303035;
     border-radius: 14px;
     background: #171719;
@@ -79,17 +66,22 @@
     font-size: 0;
     line-height: 0;
   }
+  .battery-cells {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+  }
   .battery-cell-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+    gap: 12px 16px;
   }
   .battery-cell {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 12px;
     min-width: 0;
-    padding: 13px 14px;
-    border: 1px solid #2c2c31;
-    border-radius: 9px;
-    background: #1d1d20;
   }
   .battery-cell > span {
     display: block;
@@ -99,7 +91,6 @@
   }
   .battery-cell > strong {
     display: block;
-    margin-top: 6px;
     font-size: 1.125rem;
     font-weight: 600;
     line-height: 1.5;
@@ -113,11 +104,16 @@
   }
   .battery-identity {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px 24px;
-    margin-top: 16px;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
   }
   .battery-identity > div {
+    display: grid;
+    grid-template-columns: 3em minmax(0, 1fr);
+    align-items: baseline;
+    gap: 12px;
     min-width: 0;
   }
   .battery-identity dt {
@@ -126,54 +122,47 @@
     line-height: 1.5;
   }
   .battery-identity dd {
-    margin-top: 6px;
-    font-size: 1.125rem;
+    margin: 0;
+    font-size: 1rem;
     font-weight: 600;
     line-height: 1.5;
     overflow-wrap: anywhere;
   }
   .battery-history {
-    margin-top: 16px;
+    margin-top: 12px;
   }
-  .battery-history-empty {
-    display: flex;
-    min-height: 112px;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    margin-top: 16px;
-    padding: 16px 12px;
-    text-align: center;
+  .battery-history-compact .battery-panel-heading {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    gap: 6px 16px;
   }
-  .battery-history-empty h3 {
+  .battery-history-status {
     color: var(--foreground);
     font-size: 1rem;
-    font-weight: 400;
     line-height: 1.5;
   }
-  .battery-history-empty p,
   .battery-history-description {
-    margin-top: 7px;
+    margin-top: 12px;
     color: var(--foreground);
     font-size: 0.8125rem;
     line-height: 1.6;
   }
-  .battery-history-description {
-    margin-top: 16px;
-  }
   .battery-records {
     display: grid;
     grid-template-columns: 1fr;
-    margin-top: 16px;
+    margin-top: 12px;
     list-style: none;
   }
   .battery-records > li {
     display: grid;
-    grid-template-columns: 2ch minmax(0, 1fr) minmax(100px, 0.7fr) minmax(180px, 1fr);
+    grid-template-columns: 2ch minmax(0, 1fr) minmax(100px, 0.7fr) minmax(
+        180px,
+        1fr
+      );
     align-items: center;
-    gap: 24px;
+    gap: 12px;
     min-width: 0;
-    padding-block: 16px;
+    padding-block: 12px;
   }
   .battery-records > li + li {
     border-top: 1px solid var(--border);
@@ -230,21 +219,12 @@
 }
 
 @media (max-width: 760px) {
-  .battery-details-grid {
-    grid-template-columns: 1fr;
-  }
-  .battery-identity {
-    grid-template-columns: 1fr;
-  }
   .battery-records > li {
     grid-template-columns: 2ch minmax(0, 1fr) 96px 158px;
     gap: 12px;
   }
   .battery-record-time {
     font-size: 0.875rem;
-  }
-  .battery-cell-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -262,28 +242,18 @@
     text-align: left;
   }
   .battery-content {
-    padding-bottom: 40px;
+    padding-bottom: 24px;
   }
   .battery-metrics {
     gap: 12px;
   }
-  .battery-metric,
   .battery-panel {
-    padding: 18px;
+    padding: 16px;
   }
   .battery-metric-value {
-    font-size: 1.625rem;
-  }
-  .battery-field-label {
-    font-size: 1rem;
+    font-size: 1.875rem;
   }
   .battery-metric-value > span:not(.battery-empty-value) {
     margin-left: 5px;
-  }
-  .battery-cell-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .battery-history-empty {
-    padding-inline: 0;
   }
 }

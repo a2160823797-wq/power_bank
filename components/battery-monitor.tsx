@@ -30,7 +30,6 @@ const text = {
     total === null
       ? `已收到 ${count} 条。请重新连接设备以读取完整记录。`
       : `已收到 ${count} 条，预期 ${total} 条。请重新连接设备以读取完整记录。`,
-  emptyHistory: '本次读取已完成，设备报告的记录数为 0。',
 };
 
 const beijingHistoryTime = new Intl.DateTimeFormat('zh-CN', {
@@ -79,41 +78,38 @@ export default function BatteryMonitor() {
       battery.records.length,
       battery.historyExpected,
     ),
-    complete: battery.records.length === 0 ? text.emptyHistory : '',
+    complete: '',
   }[battery.historyStatus];
 
   return (
-    <section
-      className="battery-content"
-      aria-label={text.monitoring}
-    >
-      <section className="battery-metrics" aria-label={text.liveMetrics}>
-        <div className="battery-metric">
-          <p className="battery-field-label">{text.totalVoltage}</p>
-          <p className="battery-metric-value">
-            {formatVoltage(battery.totalVoltageMv)}
-            <span>V</span>
-          </p>
+    <section className="battery-content" aria-label={text.monitoring}>
+      <section
+        className="battery-panel battery-overview"
+        aria-label={text.liveMetrics}
+      >
+        <div className="battery-metrics">
+          <div className="battery-metric">
+            <p className="battery-field-label">{text.totalVoltage}</p>
+            <p className="battery-metric-value">
+              {formatVoltage(battery.totalVoltageMv)}
+              <span>V</span>
+            </p>
+          </div>
+          <div className="battery-metric">
+            <p className="battery-field-label">{text.temperature}</p>
+            <p className="battery-metric-value">
+              {battery.temperatureC === null ? (
+                <EmptyValue />
+              ) : (
+                battery.temperatureC.toFixed(0)
+              )}
+              <span>°C</span>
+            </p>
+          </div>
         </div>
-        <div className="battery-metric">
-          <p className="battery-field-label">{text.temperature}</p>
-          <p className="battery-metric-value">
-            {battery.temperatureC === null ? (
-              <EmptyValue />
-            ) : (
-              battery.temperatureC.toFixed(0)
-            )}
-            <span>°C</span>
-          </p>
-        </div>
-      </section>
 
-      <div className="battery-details-grid">
         {visibleCellCount > 1 && (
-          <section
-            className="battery-panel"
-            aria-label={text.cellVoltages}
-          >
+          <section className="battery-cells" aria-label={text.cellVoltages}>
             <div className="battery-cell-grid">
               {Array.from({ length: visibleCellCount }, (_, index) => (
                 <div className="battery-cell" key={index}>
@@ -128,90 +124,76 @@ export default function BatteryMonitor() {
           </section>
         )}
 
-        <section
-          className="battery-panel"
-          aria-labelledby="battery-identity-title"
-        >
-          <div className="battery-panel-heading">
-            <h2 id="battery-identity-title">{text.cellInfo}</h2>
+        <dl className="battery-identity" aria-label={text.cellInfo}>
+          <div>
+            <dt>{text.model}</dt>
+            <dd>{battery.batteryModel || <EmptyValue />}</dd>
           </div>
-          <dl className="battery-identity">
-            <div>
-              <dt>{text.model}</dt>
-              <dd>{battery.batteryModel || <EmptyValue />}</dd>
-            </div>
-            <div>
-              <dt>{text.code}</dt>
-              <dd>{battery.batteryCode || <EmptyValue />}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
+          <div>
+            <dt>{text.code}</dt>
+            <dd>{battery.batteryCode || <EmptyValue />}</dd>
+          </div>
+        </dl>
+      </section>
 
       <section
-        className="battery-panel battery-history"
+        className={`battery-panel battery-history${visibleRecords.length === 0 ? ' battery-history-compact' : ''}`}
         aria-labelledby="battery-history-title"
       >
         <div className="battery-panel-heading">
           <h2 id="battery-history-title">{text.history}</h2>
+          {visibleRecords.length === 0 && (
+            <p className="battery-history-status" aria-live="polite">
+              {battery.historyStatus === 'complete' ? (
+                text.noRecords
+              ) : (
+                <EmptyValue />
+              )}
+            </p>
+          )}
         </div>
-        {visibleRecords.length === 0 ? (
-          <div className="battery-history-empty" aria-live="polite">
-            {battery.historyStatus === 'complete' ? (
-              <h3>{text.noRecords}</h3>
-            ) : (
-              <EmptyValue />
-            )}
-          </div>
-        ) : (
-          <>
-            {historyDescription && (
-              <p className="battery-history-description" aria-live="polite">
-                {historyDescription}
-              </p>
-            )}
-            <ol
-              className="battery-records"
-              aria-label={text.historyRecords}
-            >
-              {visibleRecords.map((record, index) => (
-                <li key={index}>
-                  <span className="battery-record-index" aria-hidden="true">
-                    {index + 1}
+        {historyDescription && (
+          <p className="battery-history-description" aria-live="polite">
+            {historyDescription}
+          </p>
+        )}
+        {visibleRecords.length > 0 && (
+          <ol className="battery-records" aria-label={text.historyRecords}>
+            {visibleRecords.map((record, index) => (
+              <li key={index}>
+                <span className="battery-record-index" aria-hidden="true">
+                  {index + 1}
+                </span>
+                <div className="battery-record-heading">
+                  <h3>{recordTypeLabel(record.type)}</h3>
+                </div>
+                <p
+                  className="battery-record-value"
+                  aria-label={text.recordValue}
+                >
+                  <span className="battery-record-number">
+                    {record.type.startsWith('overvoltage-')
+                      ? (record.value / 1000).toFixed(3)
+                      : record.value.toFixed(0)}
                   </span>
-                  <div className="battery-record-heading">
-                    <h3>
-                      {recordTypeLabel(record.type)}
-                    </h3>
-                  </div>
-                  <p
-                    className="battery-record-value"
-                    aria-label={text.recordValue}
-                  >
-                    <span className="battery-record-number">
-                      {record.type.startsWith('overvoltage-')
-                        ? (record.value / 1000).toFixed(3)
-                        : record.value.toFixed(0)}
+                  <span className="battery-record-unit">
+                    <span className="battery-record-degree">
+                      {record.type.startsWith('overvoltage-') ? '' : '°'}
                     </span>
-                    <span className="battery-record-unit">
-                      <span className="battery-record-degree">
-                        {record.type.startsWith('overvoltage-') ? '' : '°'}
-                      </span>
-                      <span className="battery-record-symbol">
-                        {record.type.startsWith('overvoltage-') ? 'V' : 'C'}
-                      </span>
+                    <span className="battery-record-symbol">
+                      {record.type.startsWith('overvoltage-') ? 'V' : 'C'}
                     </span>
-                  </p>
-                  <p
-                    className="battery-record-time"
-                    aria-label={text.occurrenceTime}
-                  >
-                    {formatTime(record.timeUnixSeconds)}
-                  </p>
-                </li>
-              ))}
-            </ol>
-          </>
+                  </span>
+                </p>
+                <p
+                  className="battery-record-time"
+                  aria-label={text.occurrenceTime}
+                >
+                  {formatTime(record.timeUnixSeconds)}
+                </p>
+              </li>
+            ))}
+          </ol>
         )}
       </section>
     </section>
