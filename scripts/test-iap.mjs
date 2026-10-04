@@ -382,6 +382,59 @@ for (const scenario of [
     assert.ok(port.closed);
   });
 
+test('failed port open does not close a port the session never opened', async () => {
+  const port = new MockPort();
+  const failure = new Error('port is already open');
+  let closeCalls = 0;
+  port.open = async () => {
+    throw failure;
+  };
+  port.close = async () => {
+    closeCalls++;
+  };
+  const session = new IapSerialSession(port, () => {});
+  await assert.rejects(session.open(), (error) => error === failure);
+  await session.close();
+  assert.equal(closeCalls, 0);
+});
+
+test('port close failure propagates and retry releases the physical port once', async () => {
+  const port = new MockPort(() => {}, []);
+  const getReader = port.readable.getReader;
+  const failure = new Error('port close failed');
+  let closeCalls = 0;
+  let cancelCalls = 0;
+  let releaseCalls = 0;
+  port.readable.getReader = () => {
+    const reader = getReader();
+    return {
+      read: reader.read,
+      cancel: async () => {
+        cancelCalls++;
+        await reader.cancel();
+      },
+      releaseLock: () => {
+        releaseCalls++;
+        reader.releaseLock();
+      },
+    };
+  };
+  port.close = async () => {
+    closeCalls++;
+    if (closeCalls === 1) throw failure;
+    port.finish();
+  };
+  const session = new IapSerialSession(port, () => {});
+  await session.open();
+  await assert.rejects(session.close(), (error) => error === failure);
+  assert.equal(port.pending, null);
+  await session.close();
+  await session.close();
+  assert.equal(closeCalls, 2);
+  assert.equal(cancelCalls, 1);
+  assert.equal(releaseCalls, 1);
+});
+
 test('timeout retries are bounded', async () => {
   const port = new MockPort();
   const session = new IapSerialSession(port, () => {}, {

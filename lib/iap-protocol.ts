@@ -192,6 +192,7 @@ export class IapSerialSession {
   private reader: SerialReader | null = null;
   private readTask: Promise<void> | null = null;
   private aborted = false;
+  private opened = false;
 
   constructor(
     private port: SerialPortLike,
@@ -208,6 +209,7 @@ export class IapSerialSession {
       flowControl: 'none',
       bufferSize: 65536,
     });
+    this.opened = true;
     if (!this.port.readable) throw new Error('串口不可读');
     this.reader = this.port.readable.getReader();
     this.readTask = this.readLoop();
@@ -442,8 +444,9 @@ export class IapSerialSession {
       this.reader = null;
     }
     await this.readTask?.catch(() => undefined);
-    try {
+    if (this.opened) {
       await this.port.close();
-    } catch {}
+      this.opened = false;
+    }
   }
 }
