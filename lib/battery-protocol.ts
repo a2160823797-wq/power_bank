@@ -7,7 +7,7 @@ const MAX_PAYLOAD = 512;
 export interface SafetyRecord {
   type: 'overvoltage' | 'overtemperature';
   value: number; // 过充电压为 mV，异常温度为有符号 0.1℃
-  timeUnixSeconds: number | null; // 转换后的 UTC 秒，设备上报 0 时为未知
+  timeUnixSeconds: number; // 转换后的 UTC 秒
 }
 
 export interface BatteryState {
@@ -200,7 +200,7 @@ function ascii(bytes: Uint8Array) {
 }
 
 function deviceTimeToUnix(seconds: number) {
-  return seconds === 0 ? null : seconds - BEIJING_OFFSET_SECONDS;
+  return seconds - BEIJING_OFFSET_SECONDS;
 }
 
 interface BatteryCallbacks {

@@ -337,14 +337,14 @@ test('history keeps every record in order and needs matching begin, count and en
   assert.equal(f.state.historyStatus, 'receiving');
   await f.send(
     0x0a,
-    historyRecord({ type: 1, value: -120, time: 0 }),
+    historyRecord({ type: 1, value: -120, time: timestamp + 60 }),
   );
   await f.send(0x0a, [2, ...u16(3)]);
   assert.equal(f.state.historyStatus, 'complete');
   assert.deepEqual(f.state.records[2], {
     type: 'overtemperature',
     value: -120,
-    timeUnixSeconds: null,
+    timeUnixSeconds: timestamp + 60 - 28800,
   });
   assert.equal(f.state.records[0].timeUnixSeconds, timestamp - 28800);
   await f.send(0x0a, historyRecord());
@@ -359,6 +359,15 @@ test('history keeps every record in order and needs matching begin, count and en
     value: 4500,
     timeUnixSeconds: timestamp - 28800,
   }]);
+});
+
+test('history time is always converted from Beijing seconds, including the protocol epoch', async (t) => {
+  const f = await fixture(t);
+  await f.send(0x0a, [0, ...u16(1)]);
+  await f.send(0x0a, historyRecord({ time: 0 }));
+  await f.send(0x0a, [2, ...u16(1)]);
+  assert.equal(f.state.historyStatus, 'complete');
+  assert.equal(f.state.records[0].timeUnixSeconds, -28800);
 });
 
 test('zero history only completes with matching begin/end, never missing response', async (t) => {

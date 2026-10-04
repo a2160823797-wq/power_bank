@@ -30,7 +30,6 @@ const text = {
   overtemperature: '高温',
   recordValue: '记录数值',
   occurrenceTime: '发生时间',
-  timeUnavailable: '未记录',
   noData: '暂无数据',
   receiving: (count: number, total: number | null) =>
     total === null
@@ -61,8 +60,8 @@ const beijingHistoryTime = new Intl.DateTimeFormat('zh-CN', {
   hourCycle: 'h23',
 });
 
-function formatTime(seconds: number | null, empty = '—') {
-  return seconds === null ? empty : beijingHistoryTime.format(seconds * 1000);
+function formatTime(seconds: number) {
+  return beijingHistoryTime.format(seconds * 1000);
 }
 
 function formatVoltage(millivolts: number | null) {
@@ -287,10 +286,7 @@ export default function BatteryMonitor() {
                         className="battery-record-time"
                         aria-label={text.occurrenceTime}
                       >
-                        {formatTime(
-                          record.timeUnixSeconds,
-                          text.timeUnavailable,
-                        )}
+                        {formatTime(record.timeUnixSeconds)}
                       </p>
                     </li>
                   ))}
