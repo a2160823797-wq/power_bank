@@ -51,7 +51,7 @@ const historyRecord = ({
   type = 0,
   value = 4450,
   time = timestamp,
-} = {}) => [1, type, ...u32(value), ...u32(time)];
+} = {}) => [1, type, ...u16(value), ...u32(time)];
 
 class MockPort {
   options = null;
@@ -220,7 +220,8 @@ test('impossible payload lengths resynchronize without waiting for a forged leng
 });
 
 test('valid binary record containing an entire nested frame survives arbitrary fragmentation', () => {
-  const outer = frame(0x0a, [1, 0, ...frame(2, [13, 2])]);
+  const outer = frame(0x0a, [1, 1, ...frame(0x0b, [])]);
+  assert.equal(outer[3], 8);
   for (const chunkSize of [1, 2, 7, outer.length]) {
     const received = [];
     let invalid = 0;
@@ -369,6 +370,44 @@ test('history time is always converted from Beijing seconds, including the proto
   await f.send(0x0a, [2, ...u16(1)]);
   assert.equal(f.state.historyStatus, 'complete');
   assert.equal(f.state.records[0].timeUnixSeconds, -28800);
+});
+
+test('eight-byte history preserves signed 16-bit boundaries and 8400 mV across fragmented and consecutive frames', async (t) => {
+  for (const chunkSize of [1, 2, 7, 64]) {
+    const f = await fixture(t);
+    const records = [
+      historyRecord({ type: 1, value: -32768, time: timestamp }),
+      historyRecord({ type: 1, value: 32767, time: timestamp + 1 }),
+      historyRecord({ type: 0, value: 8400, time: timestamp + 2 }),
+    ];
+    for (const record of records) assert.equal(record.length, 8);
+    const stream = data([
+      ...frame(0x0a, [0, ...u16(records.length)]),
+      ...records.flatMap((record) => [...frame(0x0a, record)]),
+      ...frame(0x0a, [2, ...u16(records.length)]),
+    ]);
+    for (let offset = 0; offset < stream.length; offset += chunkSize) {
+      f.port.push(stream.slice(offset, offset + chunkSize));
+      await tick();
+    }
+    assert.equal(f.state.historyStatus, 'complete');
+    assert.deepEqual(f.state.records, [
+      { type: 'overtemperature', value: -32768, timeUnixSeconds: timestamp - 28800 },
+      { type: 'overtemperature', value: 32767, timeUnixSeconds: timestamp + 1 - 28800 },
+      { type: 'overvoltage', value: 8400, timeUnixSeconds: timestamp + 2 - 28800 },
+    ]);
+  }
+});
+
+test('obsolete ten-byte history records are rejected and cannot complete a transfer', async (t) => {
+  const f = await fixture(t);
+  await f.send(0x0a, [0, ...u16(1)]);
+  await f.send(0x0a, [1, 0, ...u32(8400), ...u32(timestamp)]);
+  assert.equal(f.state.records.length, 0);
+  await f.send(0x0a, historyRecord({ value: 8400 }));
+  await f.send(0x0a, [2, ...u16(1)]);
+  assert.equal(f.state.records[0].value, 8400);
+  assert.equal(f.state.historyStatus, 'incomplete');
 });
 
 test('zero history only completes with matching begin/end, never missing response', async (t) => {
@@ -838,7 +877,7 @@ test('IAP and NTC outer boundaries isolate nested battery identity even when for
 
 test('identity preserves partially received foreign and battery outer boundaries across its request', async (t) => {
   const nested = frame(8, identityPayload('A', 'B'));
-  const record = frame(0x0a, [1, 0, ...frame(2, [13, 2])]);
+  const record = frame(0x0a, [1, 1, ...frame(0x0b, [])]);
   const damagedRecord = record.slice();
   damagedRecord[damagedRecord.length - 1] ^= 1;
   for (const [outer, split] of [

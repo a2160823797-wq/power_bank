@@ -61,7 +61,7 @@ function supportedLength(command: number, length: number) {
     case 0x08:
       return length >= 4 && length <= MAX_PAYLOAD;
     case 0x0a:
-      return length === 3 || length === 10;
+      return length === 3 || length === 8;
     default:
       return length <= MAX_PAYLOAD;
   }
@@ -175,7 +175,7 @@ export class BatteryFrameParser {
       }
     } else if (command === 0x0a) {
       return type === 1
-        ? length === 10
+        ? length === 8
         : (type === 0 || type === 2) && length === 3;
     }
     return true;
@@ -585,15 +585,15 @@ export class BatterySerialSession {
     }
     if (
       data[0] === 1 &&
-      data.length === 10 &&
+      data.length === 8 &&
       data[1] <= 1
     ) {
-      if (data[1] === 0 && view.getInt32(2, true) < 0)
+      if (data[1] === 0 && view.getInt16(2, true) < 0)
         return false;
       const record: SafetyRecord = {
         type: data[1] === 0 ? 'overvoltage' : 'overtemperature',
-        value: view.getInt32(2, true),
-        timeUnixSeconds: deviceTimeToUnix(view.getUint32(6, true)),
+        value: view.getInt16(2, true),
+        timeUnixSeconds: deviceTimeToUnix(view.getUint32(4, true)),
       };
       this.state.records.push(record);
       if (!this.historyStarted) {
