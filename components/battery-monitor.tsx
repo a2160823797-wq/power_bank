@@ -28,7 +28,6 @@ const text = {
   historyRecords: '电池异常记录',
   overvoltage: '过充电压',
   overtemperature: '高温',
-  batteryPack: '整组电池',
   recordValue: '记录数值',
   occurrenceTime: '发生时间',
   timeUnavailable: '未记录',
@@ -91,7 +90,6 @@ export default function BatteryMonitor() {
     disconnect,
   } = useDeviceConnection();
   const visibleCellCount = battery.cellCount ?? 0;
-  const showRecordCell = battery.cellCount !== 1;
   const historyDescription = {
     unread: '',
     receiving: text.receiving(battery.records.length, battery.historyExpected),
@@ -258,21 +256,14 @@ export default function BatteryMonitor() {
                   className="battery-records"
                   aria-label={text.historyRecords}
                 >
-                  {battery.records.map((record) => (
-                    <li key={record.id}>
+                  {battery.records.map((record, index) => (
+                    <li key={index}>
                       <div className="battery-record-heading">
                         <h3>
                           {record.type === 'overvoltage'
                             ? text.overvoltage
                             : text.overtemperature}
                         </h3>
-                        {showRecordCell && (
-                          <span>
-                            {record.cell === 0
-                              ? text.batteryPack
-                              : text.cell(record.cell)}
-                          </span>
-                        )}
                       </div>
                       <p
                         className="battery-record-value"

@@ -5,10 +5,7 @@ const COMMAND_INTERVAL_MS = 8;
 const MAX_PAYLOAD = 512;
 
 export interface SafetyRecord {
-  id: number;
   type: 'overvoltage' | 'overtemperature';
-  cell: number; // 0 为整组电池，1～16 为对应串
-  state: 'idle' | 'discharging' | 'charging';
   value: number; // 过充电压为 mV，异常温度为有符号 0.1℃
   timeUnixSeconds: number | null; // 转换后的 UTC 秒，设备上报 0 时为未知
 }
@@ -64,7 +61,7 @@ function supportedLength(command: number, length: number) {
     case 0x08:
       return length >= 4 && length <= MAX_PAYLOAD;
     case 0x0a:
-      return length === 3 || length === 16;
+      return length === 3 || length === 10;
     default:
       return length <= MAX_PAYLOAD;
   }
@@ -178,7 +175,7 @@ export class BatteryFrameParser {
       }
     } else if (command === 0x0a) {
       return type === 1
-        ? length === 16
+        ? length === 10
         : (type === 0 || type === 2) && length === 3;
     }
     return true;
@@ -254,7 +251,6 @@ export class BatterySerialSession {
   private cancelWriteDelay: (() => void) | null = null;
   private historyStarted = false;
   private historyInvalid = false;
-  private historyRecords = new Map<number, SafetyRecord>();
   private pendingIdentity: PendingIdentity | null = null;
   private readonly parser: BatteryFrameParser;
 
@@ -582,7 +578,6 @@ export class BatterySerialSession {
     if (data[0] === 0 && data.length === 3) {
       this.historyStarted = true;
       this.historyInvalid = false;
-      this.historyRecords.clear();
       this.state.records = [];
       this.state.historyExpected = view.getUint16(1, true);
       this.state.historyStatus = 'receiving';
@@ -590,23 +585,17 @@ export class BatterySerialSession {
     }
     if (
       data[0] === 1 &&
-      data.length === 16 &&
-      data[5] <= 1 &&
-      data[6] <= 16 &&
-      data[7] <= 2
+      data.length === 10 &&
+      data[1] <= 1
     ) {
-      if (data[5] === 0 && (data[6] === 0 || view.getInt32(8, true) < 0))
+      if (data[1] === 0 && view.getInt32(2, true) < 0)
         return false;
       const record: SafetyRecord = {
-        id: view.getUint32(1, true),
-        type: data[5] === 0 ? 'overvoltage' : 'overtemperature',
-        cell: data[6],
-        state: (['idle', 'discharging', 'charging'] as const)[data[7]],
-        value: view.getInt32(8, true),
-        timeUnixSeconds: deviceTimeToUnix(view.getUint32(12, true)),
+        type: data[1] === 0 ? 'overvoltage' : 'overtemperature',
+        value: view.getInt32(2, true),
+        timeUnixSeconds: deviceTimeToUnix(view.getUint32(6, true)),
       };
-      this.historyRecords.set(record.id, record);
-      this.state.records = [...this.historyRecords.values()];
+      this.state.records.push(record);
       if (!this.historyStarted) {
         this.state.historyStatus = 'incomplete';
         this.state.historyExpected = null;
@@ -619,7 +608,7 @@ export class BatterySerialSession {
         this.historyStarted &&
         !this.historyInvalid &&
         this.state.historyExpected === total &&
-        this.historyRecords.size === total
+        this.state.records.length === total
           ? 'complete'
           : 'incomplete';
       this.historyStarted = false;

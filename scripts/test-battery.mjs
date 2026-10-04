@@ -48,13 +48,10 @@ const u32 = (value) => [
 ];
 const timestamp = Date.UTC(2026, 9, 2, 12, 34, 56) / 1000;
 const historyRecord = ({
-  id = 1,
   type = 0,
-  cell = 1,
-  state = 2,
   value = 4450,
   time = timestamp,
-} = {}) => [1, ...u32(id), type, cell, state, ...u32(value), ...u32(time)];
+} = {}) => [1, type, ...u32(value), ...u32(time)];
 
 class MockPort {
   options = null;
@@ -223,9 +220,7 @@ test('impossible payload lengths resynchronize without waiting for a forged leng
 });
 
 test('valid binary record containing an entire nested frame survives arbitrary fragmentation', () => {
-  const outer = data(
-    Buffer.from('AABB0A100001AABB0202000D023600000000F4BE6A31', 'hex'),
-  );
+  const outer = frame(0x0a, [1, 0, ...frame(2, [13, 2])]);
   for (const chunkSize of [1, 2, 7, outer.length]) {
     const received = [];
     let invalid = 0;
@@ -332,31 +327,38 @@ test('removed device-time frames leave battery state and last-received time unch
   assert.deepEqual(f.state, state);
 });
 
-test('history needs matching begin, distinct record IDs and end before complete', async (t) => {
+test('history keeps every record in order and needs matching begin, count and end before complete', async (t) => {
   const f = await fixture(t);
-  await f.send(0x0a, [0, ...u16(2)]);
+  await f.send(0x0a, [0, ...u16(3)]);
   await f.send(0x0a, historyRecord());
   await f.send(0x8a, historyRecord());
-  assert.equal(f.state.records.length, 1);
+  assert.equal(f.state.records.length, 2);
+  assert.deepEqual(f.state.records[0], f.state.records[1]);
   assert.equal(f.state.historyStatus, 'receiving');
   await f.send(
     0x0a,
-    historyRecord({ id: 2, type: 1, cell: 0, value: -120, time: 0 }),
+    historyRecord({ type: 1, value: -120, time: 0 }),
   );
-  await f.send(0x0a, [2, ...u16(2)]);
+  await f.send(0x0a, [2, ...u16(3)]);
   assert.equal(f.state.historyStatus, 'complete');
-  assert.deepEqual(f.state.records[1], {
-    id: 2,
+  assert.deepEqual(f.state.records[2], {
     type: 'overtemperature',
-    cell: 0,
-    state: 'charging',
     value: -120,
     timeUnixSeconds: null,
   });
   assert.equal(f.state.records[0].timeUnixSeconds, timestamp - 28800);
-  await f.send(0x0a, historyRecord({ id: 3 }));
+  await f.send(0x0a, historyRecord());
   assert.equal(f.state.historyStatus, 'incomplete');
-  assert.equal(f.state.records.length, 3);
+  assert.equal(f.state.records.length, 4);
+  await f.send(0x0a, [0, ...u16(1)]);
+  await f.send(0x0a, historyRecord({ value: 4500 }));
+  await f.send(0x0a, [2, ...u16(1)]);
+  assert.equal(f.state.historyStatus, 'complete');
+  assert.deepEqual(f.state.records, [{
+    type: 'overvoltage',
+    value: 4500,
+    timeUnixSeconds: timestamp - 28800,
+  }]);
 });
 
 test('zero history only completes with matching begin/end, never missing response', async (t) => {
@@ -386,7 +388,7 @@ test('history count mismatch, malformed records and CRC corruption never claim c
   await f.send(0x0a, [2, 2, 0]);
   assert.equal(f.state.historyStatus, 'incomplete');
   await f.send(0x0a, [0, 1, 0]);
-  await f.send(0x0a, historyRecord({ cell: 0 }));
+  await f.send(0x0a, [...historyRecord(), 0]);
   await f.send(0x0a, historyRecord({ value: -1 }));
   await f.send(0x0a, historyRecord({ type: 5 }));
   assert.equal(f.state.records.length, 0);
@@ -826,7 +828,7 @@ test('IAP and NTC outer boundaries isolate nested battery identity even when for
 
 test('identity preserves partially received foreign and battery outer boundaries across its request', async (t) => {
   const nested = frame(8, identityPayload('A', 'B'));
-  const record = frame(0x0a, [1, ...nested, 0, 0, 0, 0, 0]);
+  const record = frame(0x0a, [1, 0, ...frame(2, [13, 2])]);
   const damagedRecord = record.slice();
   damagedRecord[damagedRecord.length - 1] ^= 1;
   for (const [outer, split] of [
