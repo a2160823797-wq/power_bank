@@ -26,7 +26,6 @@ const {
 // Historical board configuration is retained only as a protocol regression fixture.
 const CW32L910_SETTINGS = {
   ...GENERIC_SETTINGS,
-  protocol: 'iap-ymodem',
   handshakeTimeoutMs: '9000',
   validation: 'cortex-m',
   maxAppSize: '0xBE00',
@@ -128,7 +127,6 @@ function receiver(config, data, behavior = {}) {
   const port = new MockPort(
     (packet) => {
       if (packet[0] === 0xaa) {
-        assert.equal(config.protocol, 'iap-ymodem');
         const command = packet[2];
         assert.equal(packet[0], 0xaa);
         assert.equal(packet[1], 0x55);
@@ -177,7 +175,7 @@ function receiver(config, data, behavior = {}) {
       assert.equal((packet.at(-2) << 8) | packet.at(-1), crc16(payload));
       if (phase === 'header') {
         // IAP_Flash_Init refuses to erase or ACK a header without CMD 3.
-        if (config.protocol === 'iap-ymodem' && !manifestAccepted) {
+        if (!manifestAccepted) {
           port.push([0x18, 0x18]);
           return;
         }
@@ -192,6 +190,7 @@ function receiver(config, data, behavior = {}) {
           port.push([0x15]);
           return;
         }
+        if (behavior.noHeaderAck) return;
         port.push([0x06, 0x43]);
         phase = 'data';
       } else if (phase === 'end') {
@@ -225,6 +224,11 @@ function receiver(config, data, behavior = {}) {
           data.subarray(offset, offset + count),
         );
         assert.ok(payload.subarray(count).every((value) => value === 0x1a));
+        if (behavior.stopAtData) {
+          if (behavior.stopAtData === 'disconnect') port.finish();
+          else port.push([0x18, 0x18]);
+          return;
+        }
         if (behavior.retryData && !retried) {
           retried = true;
           port.push([0x15]);
@@ -235,7 +239,7 @@ function receiver(config, data, behavior = {}) {
         port.push([0x06]);
       }
     },
-    config.protocol === 'ymodem' || behavior.startBootReady ? [0x43] : [],
+    behavior.startBootReady ? [0x43] : [],
   );
   return { port, commands, done: () => phase === 'done' };
 }
@@ -275,7 +279,6 @@ test('legacy and custom Cortex-M memory bounds, Thumb bit and unsigned addresses
   );
   const custom = resolveIapConfig({
     ...CW32L910_SETTINGS,
-    protocol: 'ymodem',
     appStart: '0x80004000',
     maxAppSize: '0x40000',
     ramSize: '0x5000',
@@ -297,7 +300,6 @@ test('invalid settings are rejected before opening a port', () => {
     { responseTimeoutMs: '1' },
     { packetSize: '512' },
     { validation: 'cortex-m' },
-    { protocol: 'unknown' },
   ])
     assert.ok(
       resolveIapConfig({ ...GENERIC_SETTINGS, ...patch }).error,
@@ -313,10 +315,10 @@ test('invalid settings are rejected before opening a port', () => {
 
 for (const scenario of [
   {
-    name: 'generic 1K with initial buffered C and single EOT ACK',
+    name: 'automatic IAP + YMODEM 1K with initial buffered C and single EOT ACK',
     config: GENERIC_CONFIG,
     size: 49153,
-    behavior: { singleEot: true },
+    behavior: { startBootReady: true, singleEot: true },
   },
   {
     name: 'generic 128-byte packets and sequence rollover',
@@ -367,11 +369,7 @@ for (const scenario of [
       assert.deepEqual(progress.at(-1), [100, data.length]);
       assert.deepEqual(
         commands,
-        scenario.config.protocol === 'ymodem'
-          ? []
-          : scenario.behavior.fallback
-            ? [0, 2, 2, 3]
-            : [0, 2, 3],
+        scenario.behavior.fallback ? [0, 2, 2, 3] : [0, 2, 3],
       );
     } finally {
       await session.close();
@@ -433,25 +431,29 @@ test('port close failure propagates and retry releases the physical port once', 
 });
 
 test('timeout retries are bounded', async () => {
-  const port = new MockPort();
-  const session = new IapSerialSession(port, () => {}, {
+  const config = {
     ...GENERIC_CONFIG,
     responseTimeoutMs: 5,
     maxAttempts: 2,
-  });
+  };
+  const data = firmware(1024);
+  const { port, commands } = receiver(config, data, { noHeaderAck: true });
+  const session = new IapSerialSession(port, () => {}, config);
   try {
     await session.open();
     await assert.rejects(
       session.upgrade(
         'firmware.bin',
-        firmware(1024),
+        data,
         () => {},
         () => {},
       ),
       /连续 2 次尝试失败/,
     );
-    assert.equal(port.writes.length, 2);
-    assert.deepEqual(port.writes[0], port.writes[1]);
+    assert.deepEqual(commands, [0, 2, 3]);
+    const headers = port.writes.filter((packet) => packet[0] === 1);
+    assert.equal(headers.length, 2);
+    assert.deepEqual(headers[0], headers[1]);
   } finally {
     await session.close();
   }
@@ -471,7 +473,10 @@ test('cancel immediately wakes the handshake and sends CAN CAN', async () => {
     const rejected = assert.rejects(transfer, /升级已取消/);
     await session.cancel();
     await rejected;
-    assert.deepEqual(port.writes, [new Uint8Array([0x18, 0x18])]);
+    assert.equal(port.writes.length, 2);
+    assert.equal(port.writes[0][0], 0xaa);
+    assert.equal(port.writes[0][2], 0);
+    assert.deepEqual(port.writes[1], new Uint8Array([0x18, 0x18]));
   } finally {
     await session.close();
   }
@@ -479,22 +484,24 @@ test('cancel immediately wakes the handshake and sends CAN CAN', async () => {
 
 for (const reason of ['disconnect', 'device cancel'])
   test(`${reason} stops without retries`, async () => {
-    const port = new MockPort(() =>
-      reason === 'disconnect' ? port.finish() : port.push([0x18, 0x18]),
-    );
+    const data = firmware(1024);
+    const { port, commands } = receiver(GENERIC_CONFIG, data, {
+      stopAtData: reason,
+    });
     const session = new IapSerialSession(port, () => {}, GENERIC_CONFIG);
     try {
       await session.open();
       await assert.rejects(
         session.upgrade(
           'firmware.bin',
-          firmware(1024),
+          data,
           () => {},
           () => {},
         ),
         reason === 'disconnect' ? /串口已断开/ : /设备取消/,
       );
-      assert.equal(port.writes.length, 1);
+      assert.deepEqual(commands, [0, 2, 3]);
+      assert.equal(port.writes.filter((packet) => packet[0] === 2).length, 1);
     } finally {
       await session.close();
     }
@@ -523,7 +530,7 @@ for (const { name, data, expected } of [
 
 test('default X202 memory bounds and response timeout match the Bootloader', () => {
   assert.deepEqual(DEFAULT_CONFIG, X202_CONFIG);
-  assert.equal(DEFAULT_CONFIG.protocol, 'iap-ymodem');
+  assert.equal('protocol' in DEFAULT_CONFIG, false);
   assert.equal(IAP_BAUD_RATE, 1500000);
   assert.equal('baudRate' in DEFAULT_CONFIG, false);
   assert.equal(DEFAULT_CONFIG.packetSize, 128);
@@ -619,12 +626,6 @@ test('X202 missing final ACK retries are bounded and never report success', asyn
 });
 
 for (const [name, config, behavior, expected] of [
-  [
-    'pure YMODEM without manifest',
-    GENERIC_CONFIG,
-    { startBootReady: true },
-    /设备取消/,
-  ],
   [
     'manifest rejected',
     X202_CONFIG,

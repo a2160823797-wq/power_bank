@@ -1,9 +1,6 @@
 export const IAP_BAUD_RATE = 1500000;
 
-export type IapProtocol = 'ymodem' | 'iap-ymodem';
-
 export interface IapConfig {
-  protocol: IapProtocol;
   packetSize: 128 | 1024;
   responseTimeoutMs: number;
   handshakeTimeoutMs: number;
@@ -13,7 +10,6 @@ export interface IapConfig {
 }
 
 export interface IapSettings {
-  protocol: IapProtocol;
   packetSize: '128' | '1024';
   responseTimeoutMs: string;
   handshakeTimeoutMs: string;
@@ -26,7 +22,6 @@ export interface IapSettings {
 }
 
 export const GENERIC_SETTINGS: IapSettings = {
-  protocol: 'ymodem',
   packetSize: '1024',
   responseTimeoutMs: '10000',
   handshakeTimeoutMs: '30000',
@@ -41,7 +36,6 @@ export const GENERIC_SETTINGS: IapSettings = {
 // x202_015: IAP/iap.h、System/cell_info.h 和 System/uart.c
 export const X202_SETTINGS: IapSettings = {
   ...GENERIC_SETTINGS,
-  protocol: 'iap-ymodem',
   packetSize: '128',
   // The Bootloader retains final ACK replies for 7 seconds. Retry before it exits.
   responseTimeoutMs: '5000',
@@ -69,14 +63,11 @@ export function resolveIapConfig(
         throw new Error(`${label}应在 ${min}–${max} 范围内`);
       return value;
     };
-    if (!['ymodem', 'iap-ymodem'].includes(settings.protocol))
-      throw new Error('请选择支持的升级协议');
     if (!['size', 'cortex-m'].includes(settings.validation))
       throw new Error('请选择支持的固件校验方式');
     if (!['128', '1024'].includes(settings.packetSize))
       throw new Error('数据包应为 128 或 1024 字节');
     const config: IapConfig = {
-      protocol: settings.protocol,
       packetSize: Number(settings.packetSize) as 128 | 1024,
       responseTimeoutMs: integer(
         settings.responseTimeoutMs,

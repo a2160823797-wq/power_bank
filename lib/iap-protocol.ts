@@ -325,12 +325,6 @@ export class IapSerialSession {
 
   private async enterUpgradeMode(onStage: StageCallback) {
     onStage('handshake');
-    if (this.config.protocol === 'ymodem') {
-      this.log('等待 YMODEM 接收请求，请让设备进入 Bootloader 接收模式');
-      await this.waitControl(CRC_REQUEST, this.config.handshakeTimeoutMs);
-      this.log('YMODEM 接收端已就绪', 'success');
-      return;
-    }
     this.log('正在确认设备在线');
     const ack = await this.command(0);
     if (ack[0] !== 1) throw new Error('设备在线确认失败');
@@ -353,19 +347,15 @@ export class IapSerialSession {
     this.ensureActive();
     const validationError = validateFirmware(firmware, this.config);
     if (validationError) throw new Error(validationError);
-    // Preserve an initial C that may already have arrived immediately after opening the port.
-    if (this.config.protocol === 'iap-ymodem') this.inbox.clear();
+    this.inbox.clear();
     await this.enterUpgradeMode(onStage);
-    if (this.config.protocol === 'iap-ymodem') {
-      const transferInfo = new Uint8Array(8);
-      transferInfo.set(u32le(firmware.length), 0);
-      transferInfo.set(u32le(crc32(firmware)), 4);
-      this.log('正在下发固件校验信息');
-      const accepted = await this.command(3, transferInfo);
-      if (accepted[0] !== 1)
-        throw new Error('Bootloader 拒绝了固件大小或 CRC32');
-      await this.waitControl(CRC_REQUEST);
-    }
+    const transferInfo = new Uint8Array(8);
+    transferInfo.set(u32le(firmware.length), 0);
+    transferInfo.set(u32le(crc32(firmware)), 4);
+    this.log('正在下发固件校验信息');
+    const accepted = await this.command(3, transferInfo);
+    if (accepted[0] !== 1) throw new Error('Bootloader 拒绝了固件大小或 CRC32');
+    await this.waitControl(CRC_REQUEST);
 
     const headerData = new Uint8Array(128);
     const safeName =
@@ -415,12 +405,7 @@ export class IapSerialSession {
     );
     this.ensureActive();
     onProgress(100, firmware.length);
-    this.log(
-      this.config.protocol === 'iap-ymodem'
-        ? '固件传输完成，请确认设备运行状态'
-        : '设备已确认接收，固件校验与启动由 Bootloader 完成',
-      'success',
-    );
+    this.log('固件传输完成，请确认设备运行状态', 'success');
   }
 
   async cancel() {
