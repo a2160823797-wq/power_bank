@@ -1,7 +1,9 @@
 {
-  "name": "sites-project",
-  "version": "0.1.0",
+  "name": "powerbank",
+  "version": "0.1.1",
   "private": true,
+  "description": "PowerBank 电池监测、温度模拟与固件升级",
+  "main": "desktop/main.cjs",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -15,9 +17,30 @@
     "dev": "vite",
     "build": "vite build && node scripts/inline-offline.mjs",
     "build:offline": "npm run build",
+    "desktop": "npm run build:offline && install-electron && electron .",
+    "build:desktop": "npm run build:offline && electron-builder --win portable --x64 --publish never",
     "start": "npm run dev",
     "lint": "oxlint",
     "format": "oxfmt"
+  },
+  "build": {
+    "appId": "com.jack.powerbank",
+    "productName": "PowerBank",
+    "directories": {
+      "output": "desktop-dist"
+    },
+    "files": [
+      "desktop/**/*",
+      "PowerBank.html",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "icon": "desktop/icon.ico"
+    },
+    "portable": {
+      "artifactName": "PowerBank.exe"
+    }
   },
   "dependencies": {
     "lucide-react": "1.31.0",
@@ -29,6 +52,8 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "oxfmt": "0.61.0",
     "oxlint": "1.76.0",
     "oxlint-tsgolint": "7.0.2001",

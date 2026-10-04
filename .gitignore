@@ -48,6 +48,7 @@ yarn-error.log*
 .vercel
 next-env.d.ts
 /dist/
+/desktop-dist/
 /.offline-build/
 /.wrangler/
 /.cache/

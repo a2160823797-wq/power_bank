@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; base-uri 'none'; form-action 'none'"
+    />
+    <title>选择串口</title>
+    <link rel="stylesheet" href="serial-picker.css" />
+    <script defer src="serial-picker.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>选择设备串口</h1>
+      <p class="description">请选择设备对应的 COM 端口</p>
+      <div id="ports" role="radiogroup" aria-label="可用串口"></div>
+      <p id="empty" role="status" hidden>未发现串口，请连接设备</p>
+      <p id="status" class="status" role="status">等待选择</p>
+      <div class="actions">
+        <button id="cancel" type="button">取消</button>
+        <button id="connect" type="button" disabled>连接</button>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,141 @@
+:root {
+  color-scheme: dark;
+  font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: #0e1117;
+  color: #e5e7eb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  padding: 28px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.description {
+  margin: 8px 0 20px;
+  font-size: 13px;
+  color: #9ca3af;
+}
+
+#ports {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 198px;
+  overflow-y: auto;
+}
+
+.port {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 59px;
+  padding: 10px 13px;
+  border: 1px solid #2a303c;
+  border-radius: 9px;
+  background: #161b24;
+  cursor: pointer;
+}
+
+.port:hover {
+  border-color: #525b6b;
+}
+
+.port:has(input:checked) {
+  border-color: #6366f1;
+  background: #1d2140;
+}
+
+.port input {
+  margin: 0;
+  accent-color: #818cf8;
+}
+
+.port-info {
+  min-width: 0;
+}
+
+.port-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.port-description {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+#empty {
+  position: absolute;
+  top: 164px;
+  left: 28px;
+  right: 28px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.status {
+  margin: 13px 0 18px;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+button {
+  min-width: 78px;
+  padding: 8px 18px;
+  border: 1px solid #374151;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: #e5e7eb;
+  background: #1f2937;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #303b4d;
+}
+
+#connect {
+  border-color: #6366f1;
+  background: #6366f1;
+}
+
+#connect:hover {
+  background: #7477f5;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 3px;
+}

@@ -6,7 +6,7 @@ $projectRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $outputDirectory = Join-Path $projectRoot 'outputs'
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 $archivePath = Join-Path $outputDirectory ('PowerBank-source-' + (Get-Date -Format 'yyyyMMdd-HHmmss-fff') + '.zip')
-$excludedDirectories = @('node_modules', '.git', '.next', '.vinext', '.wrangler', '.offline-build', 'dist', 'out', 'coverage', 'outputs', 'work')
+$excludedDirectories = @('node_modules', '.git', '.next', '.vinext', '.wrangler', '.offline-build', 'dist', 'desktop-dist', 'out', 'coverage', 'outputs', 'work')
 
 # Skip generated directories before traversal to avoid scanning dependency files.
 function Get-PackageFiles([string]$Directory) {
