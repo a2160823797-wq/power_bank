@@ -16,7 +16,7 @@ import {
 } from './battery-protocol';
 import { NtcIdentityTimeoutError, type NtcReply } from './ntc-protocol';
 import type { IapSerialSession, SerialApi, SerialPortLike } from './iap-protocol';
-import { DeviceSerialSession } from './device-session';
+import { DeviceSerialSession, type DeviceKind } from './device-session';
 import {
   connectSelectedDevice,
   discoverDevice,
@@ -31,7 +31,6 @@ import {
 } from './upgrade-connection';
 import { getWorkspaceView } from './workspace-view';
 
-type DeviceKind = 'battery' | 'ntc';
 type Connection =
   | 'disconnected'
   | 'connecting'
@@ -66,6 +65,12 @@ const getSerialSupport = () => 'serial' in navigator;
 const getServerSerialSupport = () => null;
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
+
+function markHistoryIncomplete(cur_state: BatteryState): BatteryState {
+  return cur_state.historyStatus === 'receiving'
+    ? { ...cur_state, historyStatus: 'incomplete' }
+    : cur_state;
+}
 
 function automaticKind(): DeviceKind {
   try {
@@ -102,6 +107,11 @@ export function DeviceConnectionProvider({
     if (mountedRef.current) setConnectionBusy(value);
   }, []);
 
+  const releaseSession = useCallback(async (session: DeviceSerialSession) => {
+    await session.close();
+    if (sessionRef.current === session) sessionRef.current = null;
+  }, []);
+
   const disconnect = useCallback(async () => {
     connectControllerRef.current?.abort();
     await connectTaskRef.current;
@@ -115,15 +125,10 @@ export function DeviceConnectionProvider({
     }
     const operation = (async () => {
       try {
-        await session.close();
-        if (sessionRef.current === session) sessionRef.current = null;
+        await releaseSession(session);
         if (mountedRef.current) {
           setConnection('disconnected');
-          setBattery((current) =>
-            current.historyStatus === 'receiving'
-              ? { ...current, historyStatus: 'incomplete' }
-              : current,
-          );
+          setBattery(markHistoryIncomplete);
         }
       } catch (reason) {
         if (mountedRef.current) {
@@ -141,7 +146,7 @@ export function DeviceConnectionProvider({
     } finally {
       if (closeTaskRef.current === operation) closeTaskRef.current = null;
     }
-  }, [markBusy]);
+  }, [markBusy, releaseSession]);
 
   useEffect(() => {
     if (connection !== 'connected' || connectionBusy) return;
@@ -218,8 +223,7 @@ export function DeviceConnectionProvider({
         session = result.session;
         sessionRef.current = session;
         if (controller.signal.aborted || !mountedRef.current) {
-          await session.close();
-          if (sessionRef.current === session) sessionRef.current = null;
+          await releaseSession(session);
           return;
         }
         if (!session.isOpen) throw new Error('设备已断开连接');
@@ -238,14 +242,12 @@ export function DeviceConnectionProvider({
           releaseFailed = true;
         } else if (session) {
           try {
-            await session.close();
+            await releaseSession(session);
           } catch (closeReason) {
             releaseFailed = true;
             message = messageOf(closeReason);
           }
         }
-        if (!releaseFailed && sessionRef.current === session)
-          sessionRef.current = null;
         if (mountedRef.current) {
           if (reason instanceof DeviceSelectionError) {
             message = '找到多台设备';
@@ -256,11 +258,7 @@ export function DeviceConnectionProvider({
             message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
-          setBattery((current) =>
-            current.historyStatus === 'receiving'
-              ? { ...current, historyStatus: 'incomplete' }
-              : current,
-          );
+          setBattery(markHistoryIncomplete);
           if (
             releaseFailed ||
             !(
