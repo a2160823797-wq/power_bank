@@ -166,7 +166,7 @@ function Workspace() {
     setRunning(true);
     try {
       await withUpgrade(async (port) => {
-        const session = new IapSerialSession(port, () => {});
+        const session = new IapSerialSession(port);
         sessionRef.current = session;
         try {
           await session.open();

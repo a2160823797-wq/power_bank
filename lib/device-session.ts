@@ -88,7 +88,6 @@ export class DeviceSerialSession {
     });
     const ntc = new NtcSerialSession(
       this.transport.createChannel(),
-      () => {},
       (error) => {
         if (this.ntc === ntc) this.fail(error);
       },
@@ -132,7 +131,7 @@ export class DeviceSerialSession {
 
   async identifyUpgrade(timeoutMs = 500) {
     if (!this.isOpen) throw new Error('请先连接设备');
-    const session = new IapSerialSession(this.transport.createChannel(), () => {});
+    const session = new IapSerialSession(this.transport.createChannel());
     try {
       await session.open();
       await session.identify(timeoutMs);

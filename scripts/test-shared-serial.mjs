@@ -591,11 +591,7 @@ test('real battery and NTC sessions parse mixed RX and write independently over 
     onDisconnect: () => {},
     onError: (message) => failures.push(message),
   });
-  const ntc = new NtcSerialSession(
-    transport.createChannel(),
-    () => {},
-    () => {},
-  );
+  const ntc = new NtcSerialSession(transport.createChannel());
   await Promise.all([battery.open(), ntc.open()]);
   const [batteryIdentity, ntcIdentity] = await Promise.all([
     battery.identify(1000),

@@ -96,29 +96,29 @@
     vertical-align: baseline;
   }
   .battery-identity {
-    display: grid;
-    gap: 6px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 24px;
     margin-top: 12px;
     padding-top: 12px;
     border-top: 1px solid var(--border);
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.6;
   }
-  .battery-identity > div {
+  .battery-identity-field {
     display: grid;
-    grid-template-columns: 3em minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
     align-items: baseline;
-    gap: 12px;
+    gap: 8px;
     min-width: 0;
+    max-width: 100%;
   }
   .battery-identity dt {
-    color: var(--foreground);
-    font-size: 1rem;
-    line-height: 1.5;
+    white-space: nowrap;
   }
   .battery-identity dd {
     margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
     overflow-wrap: anywhere;
   }
   .battery-history {

@@ -309,7 +309,7 @@ for (const data of [new Uint8Array(), { length: 0x100000000 }])
       data.length,
     async () => {
       const port = new MockPort();
-      const session = new IapSerialSession(port, () => {});
+      const session = new IapSerialSession(port);
       try {
         await session.open();
         await assert.rejects(
@@ -365,7 +365,7 @@ for (const scenario of [
     const { port, commands, done } = receiver(data, scenario.behavior);
     const stages = [],
       progress = [];
-    const session = new IapSerialSession(port, () => {}, scenario.config);
+    const session = new IapSerialSession(port, scenario.config);
     try {
       await session.open();
       await session.upgrade(
@@ -398,7 +398,7 @@ test('failed port open does not close a port the session never opened', async ()
   port.close = async () => {
     closeCalls++;
   };
-  const session = new IapSerialSession(port, () => {});
+  const session = new IapSerialSession(port);
   await assert.rejects(session.open(), (error) => error === failure);
   await session.close();
   assert.equal(closeCalls, 0);
@@ -430,7 +430,7 @@ test('port close failure propagates and retry releases the physical port once', 
     if (closeCalls === 1) throw failure;
     port.finish();
   };
-  const session = new IapSerialSession(port, () => {});
+  const session = new IapSerialSession(port);
   await session.open();
   await assert.rejects(session.close(), (error) => error === failure);
   assert.equal(port.pending, null);
@@ -449,7 +449,7 @@ test('timeout retries are bounded', async () => {
   };
   const data = firmware(1024);
   const { port, commands } = receiver(data, { noHeaderAck: true });
-  const session = new IapSerialSession(port, () => {}, config);
+  const session = new IapSerialSession(port, config);
   try {
     await session.open();
     await assert.rejects(
@@ -472,7 +472,7 @@ test('timeout retries are bounded', async () => {
 
 test('cancel immediately wakes the handshake and sends CAN CAN', async () => {
   const port = new MockPort(() => {}, []);
-  const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
+  const session = new IapSerialSession(port, DEFAULT_CONFIG);
   try {
     await session.open();
     const transfer = session.upgrade(
@@ -499,7 +499,7 @@ for (const reason of ['disconnect', 'device cancel'])
     const { port, commands } = receiver(data, {
       stopAtData: reason,
     });
-    const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
+    const session = new IapSerialSession(port, DEFAULT_CONFIG);
     try {
       await session.open();
       await assert.rejects(
@@ -557,7 +557,7 @@ for (const { name, data, rejectionStage } of [
     async () => {
       assert.equal(validateFirmware(data), null);
       const { port, commands, done } = receiver(data, { board: X202_BOARD });
-      const session = new IapSerialSession(port, () => {});
+      const session = new IapSerialSession(port);
       try {
         await session.open();
         await assert.rejects(
@@ -598,7 +598,7 @@ for (const { name, behavior } of [
       ...behavior,
       board: X202_BOARD,
     });
-    const session = new IapSerialSession(port, () => {}, config);
+    const session = new IapSerialSession(port, config);
     try {
       await session.open();
       await session.upgrade(
@@ -633,12 +633,7 @@ test('X202 missing final ACK retries are bounded and never report success', asyn
     noFinalAck: true,
     board: X202_BOARD,
   });
-  const logs = [];
-  const session = new IapSerialSession(
-    port,
-    (message) => logs.push(message),
-    config,
-  );
+  const session = new IapSerialSession(port, config);
   try {
     await session.open();
     await assert.rejects(
@@ -657,9 +652,6 @@ test('X202 missing final ACK retries are bounded and never report success', asyn
     );
     assert.equal(finalPackets.length, config.maxAttempts);
     assert.deepEqual(finalPackets[0], finalPackets[1]);
-    assert.ok(
-      logs.every((message) => !/固件传输完成|设备已确认接收/.test(message)),
-    );
   } finally {
     await session.close();
   }
@@ -688,7 +680,7 @@ for (const [name, config, behavior, expected] of [
   test(`X202 rejects ${name}`, async () => {
     const data = firmware(1024, 0x20001f30, 0x48d9);
     const { port, done } = receiver(data, { ...behavior, board: X202_BOARD });
-    const session = new IapSerialSession(port, () => {}, config);
+    const session = new IapSerialSession(port, config);
     try {
       await session.open();
       await assert.rejects(
@@ -717,7 +709,7 @@ test(
     const data = new Uint8Array(await readFile(process.env.IAP_TEST_FIRMWARE));
     assert.equal(validateFirmware(data, DEFAULT_CONFIG), null);
     const { port, done } = receiver(data);
-    const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
+    const session = new IapSerialSession(port, DEFAULT_CONFIG);
     try {
       await session.open();
       await session.upgrade(
@@ -736,7 +728,7 @@ test(
 test('universal host transfers firmware at another target address to a 1K-capable simulated receiver', async () => {
   const data = firmware(2048, 0x20001000, 0x4101);
   const { port, commands, done } = receiver(data);
-  const session = new IapSerialSession(port, () => {}, DEFAULT_CONFIG);
+  const session = new IapSerialSession(port, DEFAULT_CONFIG);
   try {
     await session.open();
     await session.upgrade(
@@ -757,12 +749,7 @@ test('CW32L910 current 128-only Bootloader rejects the first 1K data packet with
   const { port, commands, done } = receiver(data, {
     reject1kData: true,
   });
-  const logs = [];
-  const session = new IapSerialSession(
-    port,
-    (message) => logs.push(message),
-    DEFAULT_CONFIG,
-  );
+  const session = new IapSerialSession(port, DEFAULT_CONFIG);
   try {
     await session.open();
     await assert.rejects(
@@ -787,9 +774,6 @@ test('CW32L910 current 128-only Bootloader rejects the first 1K data packet with
       false,
     );
     assert.equal(done(), false);
-    assert.ok(
-      logs.every((message) => !/固件传输完成|设备已确认接收/.test(message)),
-    );
   } finally {
     await session.close();
   }

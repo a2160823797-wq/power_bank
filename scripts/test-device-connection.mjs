@@ -653,7 +653,7 @@ test('universal IAP transfers non-Cortex firmware in 1024-byte YMODEM packets on
     assert.equal(port.closeCount, 0);
     await assert.rejects(session.setTemperature(25, 100), /连接/);
     const count = received.length;
-    const iap = new IapSerialSession(channel, () => {}, {
+    const iap = new IapSerialSession(channel, {
       ...DEFAULT_CONFIG,
       responseTimeoutMs: 100,
       handshakeTimeoutMs: 100,
@@ -743,7 +743,7 @@ test('canceling universal IAP during YMODEM restores monitoring without reopenin
   t.after(() => session.close());
   await assert.rejects(
     session.withUpgrade(async (channel) => {
-      const iap = new IapSerialSession(channel, () => {}, {
+      const iap = new IapSerialSession(channel, {
         ...DEFAULT_CONFIG,
         responseTimeoutMs: 100,
         handshakeTimeoutMs: 100,
@@ -953,7 +953,7 @@ test('universal IAP accepts fragmented command and YMODEM acknowledgements on th
   const stages = [];
   await session.withUpgrade(async (channel) => {
     const count = received.length;
-    const iap = new IapSerialSession(channel, () => {}, {
+    const iap = new IapSerialSession(channel, {
       ...DEFAULT_CONFIG,
       responseTimeoutMs: 100,
       handshakeTimeoutMs: 100,

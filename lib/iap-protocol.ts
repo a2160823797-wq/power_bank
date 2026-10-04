@@ -50,10 +50,6 @@ export interface SerialApi {
 
 type ProgressCallback = (percent: number, sent: number) => void;
 type StageCallback = (stage: 'handshake' | 'writing' | 'verifying') => void;
-type LogCallback = (
-  message: string,
-  tone?: 'info' | 'success' | 'error',
-) => void;
 
 class RetryableError extends Error {}
 
@@ -179,7 +175,6 @@ export class IapSerialSession {
 
   constructor(
     private port: SerialPortLike,
-    private log: LogCallback,
     private config: IapConfig = DEFAULT_CONFIG,
   ) {}
 
@@ -299,9 +294,6 @@ export class IapSerialSession {
           throw new Error(
             `${label} 连续 ${this.config.maxAttempts} 次尝试失败`,
           );
-        this.log(
-          `${label} 未确认，正在重试 ${attempt}/${this.config.maxAttempts}`,
-        );
       }
     }
   }
@@ -313,10 +305,7 @@ export class IapSerialSession {
 
   private async enterUpgradeMode(onStage: StageCallback) {
     onStage('handshake');
-    this.log('正在确认设备在线');
     await this.identify();
-    this.log('设备握手成功', 'success');
-    this.log('正在切换到 Bootloader');
     const request = await this.command(2, new Uint8Array([2]));
     if (request[0] !== 1) {
       const update = await this.command(2, new Uint8Array([3]));
@@ -339,7 +328,6 @@ export class IapSerialSession {
     const transferInfo = new Uint8Array(8);
     transferInfo.set(u32le(firmware.length), 0);
     transferInfo.set(u32le(crc32(firmware)), 4);
-    this.log('正在下发固件校验信息');
     const accepted = await this.command(3, transferInfo);
     if (accepted[0] !== 1) throw new Error('Bootloader 拒绝了固件大小或 CRC32');
     await this.waitControl(CRC_REQUEST);
@@ -358,7 +346,6 @@ export class IapSerialSession {
       true,
     );
 
-    this.log('正在写入固件');
     onStage('writing');
     const totalBlocks = Math.ceil(firmware.length / IAP_PACKET_SIZE);
     for (let index = 0; index < totalBlocks; index += 1) {
@@ -375,7 +362,6 @@ export class IapSerialSession {
       onProgress(Math.round((sent / firmware.length) * 100), sent);
     }
 
-    this.log('正在等待设备确认传输结束');
     onStage('verifying');
     const eotResponse = await this.sendPacketWithRetry(
       new Uint8Array([EOT]),
@@ -391,7 +377,6 @@ export class IapSerialSession {
     );
     this.ensureActive();
     onProgress(100, firmware.length);
-    this.log('固件传输完成，请确认设备运行状态', 'success');
   }
 
   async cancel() {

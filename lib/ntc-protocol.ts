@@ -18,8 +18,6 @@ export interface NtcIdentity {
   minor: number;
 }
 
-export type NtcLogDirection = 'TX' | 'RX' | 'INFO' | 'ERROR';
-type LogCallback = (direction: NtcLogDirection, message: string) => void;
 type Reader = NonNullable<SerialPortLike['readable']> extends {
   getReader(): infer T;
 } ? T : never;
@@ -59,8 +57,8 @@ function checkTemperature(temperature: number) {
   }
 }
 
-function crc8WithInitial(data: Uint8Array, initial: number) {
-  let crc = initial;
+export function crc8(data: Uint8Array) {
+  let crc = 0;
   for (const value of data) {
     crc ^= value;
     for (let bit = 0; bit < 8; bit += 1) {
@@ -68,10 +66,6 @@ function crc8WithInitial(data: Uint8Array, initial: number) {
     }
   }
   return crc;
-}
-
-export function crc8(data: Uint8Array) {
-  return crc8WithInitial(data, 0);
 }
 
 export function encodeSetTemperature(temperature: number) {
@@ -91,31 +85,12 @@ export function encodeIdentify(nonce: number) {
   return frame;
 }
 
-export function statusText(status: number) {
-  return [
-    'OK',
-    '温度超范围',
-    'CRC 错误',
-    'AD5270 设置失败',
-    '参数错误',
-  ][status] ?? `未知状态 0x${status.toString(16).toUpperCase().padStart(2, '0')}`;
-}
-
-function hex(data: Uint8Array) {
-  return Array.from(data, (value) => value.toString(16).toUpperCase().padStart(2, '0')).join(' ');
-}
-
 /** Each push accepts arbitrary serial chunks; only complete, valid replies are returned. */
 export class NtcFrameParser {
   private bytes: number[] = [];
-  private onError: (message: string) => void;
   private onIdentity: (identity: NtcIdentity) => void;
 
-  constructor(
-    onError: (message: string) => void = () => {},
-    onIdentity: (identity: NtcIdentity) => void = () => {},
-  ) {
-    this.onError = onError;
+  constructor(onIdentity: (identity: NtcIdentity) => void = () => {}) {
     this.onIdentity = onIdentity;
   }
 
@@ -141,15 +116,11 @@ export class NtcFrameParser {
         const length = this.bytes[3] | (this.bytes[4] << 8);
         const maxPayload = this.bytes[1] === 0xbb ? 512 : 128;
         if (length > maxPayload) {
-          this.onError('RX 非 NTC 帧长度异常，重新同步');
           this.bytes.shift();
           continue;
         }
         if (this.bytes.length < length + 6) break;
-        const outerFrame = Uint8Array.from(this.bytes.splice(0, length + 6));
-        if (crc8WithInitial(outerFrame.subarray(2, -1), 0xff) !== outerFrame[outerFrame.length - 1]) {
-          this.onError('RX 非 NTC 帧 CRC 错误，按外层帧边界丢弃');
-        }
+        this.bytes.splice(0, length + 6);
         continue;
       }
       if (this.bytes[1] !== 0x81 && this.bytes[1] !== 0x82) {
@@ -159,7 +130,6 @@ export class NtcFrameParser {
       if (this.bytes.length < 12) break;
       const frame = Uint8Array.from(this.bytes.slice(0, 12));
       if (crc8(frame.subarray(0, 11)) !== frame[11]) {
-        this.onError(`RX CRC 校验失败，丢弃并重新同步：${hex(frame)}`);
         this.bytes.shift();
         continue;
       }
@@ -171,7 +141,6 @@ export class NtcFrameParser {
           frame[4] !== 0x43 || frame[5] !== 0x31 ||
           frame[6] !== 1 || frame[7] !== 0 || frame[10] !== 0
         ) {
-          this.onError(`RX 设备识别不匹配，丢弃：${hex(frame)}`);
           continue;
         }
         this.onIdentity({ nonce: view.getUint16(8, true), major: frame[6], minor: frame[7] });
@@ -198,7 +167,6 @@ export class NtcFrameParser {
           reply.resistanceOhms > 89710
         ))
       ) {
-        this.onError(`RX 参数异常，丢弃：${hex(frame)}`);
         continue;
       }
       replies.push(reply);
@@ -215,7 +183,6 @@ interface PendingReply {
 
 export class NtcSerialSession {
   private port: SerialPortLike;
-  private log: LogCallback;
   private onDisconnect?: (error: Error) => void;
   private parser: NtcFrameParser;
   private reader: Reader | null = null;
@@ -228,14 +195,10 @@ export class NtcSerialSession {
   private opened = false;
   private state: 'closed' | 'opening' | 'open' | 'closing' = 'closed';
 
-  constructor(port: SerialPortLike, onLog: LogCallback, onDisconnect?: (error: Error) => void) {
+  constructor(port: SerialPortLike, onDisconnect?: (error: Error) => void) {
     this.port = port;
-    this.log = onLog;
     this.onDisconnect = onDisconnect;
-    this.parser = new NtcFrameParser(
-      (message) => this.log('ERROR', message),
-      (identity) => this.receiveReply(identity),
-    );
+    this.parser = new NtcFrameParser((identity) => this.receiveReply(identity));
   }
 
   get isOpen() {
@@ -274,7 +237,6 @@ export class NtcSerialSession {
     this.parser.reset();
     this.state = 'open';
     this.readTask = this.readLoop(this.reader);
-    this.log('INFO', '串口已连接：1500000 / 8N1');
   }
 
   private async readLoop(reader: Reader) {
@@ -287,7 +249,6 @@ export class NtcSerialSession {
           break;
         }
         if (!value?.length) continue;
-        this.log('RX', hex(value));
         for (const reply of this.parser.push(value)) {
           this.receiveReply(reply);
         }
@@ -299,9 +260,8 @@ export class NtcSerialSession {
       if (this.reader === reader) this.reader = null;
       if (failure) {
         this.pending?.reject(failure);
-        this.log('ERROR', failure.message);
         // Start cleanup without awaiting our own read task.
-        void this.close().catch((error: unknown) => this.log('ERROR', asError(error).message));
+        void this.close().catch(() => {});
         this.onDisconnect?.(failure);
       }
     }
@@ -310,10 +270,6 @@ export class NtcSerialSession {
   private receiveReply(reply: NtcReply | NtcIdentity) {
     if (this.pending?.matches(reply)) {
       this.pending.resolve(reply);
-    } else if ('temperature' in reply) {
-      this.log('INFO', `忽略无匹配请求的回复：${reply.temperature}℃ / ${statusText(reply.status)}`);
-    } else {
-      this.log('INFO', '忽略无匹配请求的设备识别回复');
     }
   }
 
@@ -373,11 +329,7 @@ export class NtcSerialSession {
         reject: (error) => finish(undefined, error),
       };
       const onAbort = () => pending.reject(abortError());
-      const timer = globalThis.setTimeout(() => {
-        const error = timeoutError();
-        this.log('ERROR', error.message);
-        pending.reject(error);
-      }, timeoutMs);
+      const timer = globalThis.setTimeout(() => pending.reject(timeoutError()), timeoutMs);
       this.pending = pending;
       signal?.addEventListener('abort', onAbort, { once: true });
     });
@@ -386,7 +338,6 @@ export class NtcSerialSession {
       const writer = this.port.writable!.getWriter() as Writer;
       this.writer = writer;
       try {
-        this.log('TX', hex(frame));
         await writer.write(frame);
       } finally {
         writer.releaseLock();
@@ -418,13 +369,8 @@ export class NtcSerialSession {
         ]);
         await Promise.allSettled([this.readTask, this.writeTask]);
         if (this.opened) {
-          try {
-            await this.port.close();
-            this.opened = false;
-          } catch (error) {
-            this.log('ERROR', `关闭串口：${asError(error).message}`);
-            throw error;
-          }
+          await this.port.close();
+          this.opened = false;
         }
       } finally {
         this.reader = null;

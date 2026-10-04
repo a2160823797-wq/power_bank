@@ -15,7 +15,6 @@ const {
   NtcSerialSession,
   NtcTimeoutError,
   NtcIdentityTimeoutError,
-  statusText,
 } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 const savedDeviceSource = stripTypeScriptTypes(
@@ -108,9 +107,8 @@ class MockPort {
 }
 
 function makeSession(port, onDisconnect) {
-  const logs = [];
-  const session = new NtcSerialSession(port, (direction, message) => logs.push({ direction, message }), onDisconnect);
-  return { session, logs };
+  const session = new NtcSerialSession(port, onDisconnect);
+  return { session };
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -148,19 +146,15 @@ test('parser accepts every split boundary and single-byte fragments', () => {
 });
 
 test('parser resynchronizes noise, wrong commands, CRC failure and glued frames', () => {
-  const errors = [];
-  const parser = new NtcFrameParser((message) => errors.push(message));
+  const parser = new NtcFrameParser();
   const bad = replyFrame(26);
   bad[11] ^= 1;
   const frames = Uint8Array.from([1, 2, 0xaa, 0x01, 3, 0xaa, ...bad, ...replyFrame(25), ...replyFrame(-25, 89710, 919)]);
   assert.deepEqual(parser.push(frames).map((reply) => reply.temperature), [25, -25]);
-  assert.equal(errors.length, 1);
-  assert.match(errors[0], /CRC/);
 });
 
 test('invalid parameter replies cannot become successful ACKs', () => {
-  const errors = [];
-  const parser = new NtcFrameParser((message) => errors.push(message));
+  const parser = new NtcFrameParser();
   for (const frame of [
     replyFrame(25, 10000, 1024),
     replyFrame(25, 10000, 102, 5),
@@ -168,7 +162,6 @@ test('invalid parameter replies cannot become successful ACKs', () => {
     replyFrame(25, 4294967295),
     replyFrame(-26, 89710),
   ]) assert.deepEqual(parser.push(frame), []);
-  assert.equal(errors.length, 5);
   assert.equal(parser.push(replyFrame(125, 534, 5)).length, 1);
 });
 
@@ -177,7 +170,6 @@ test('all defined non-OK statuses remain valid replies', () => {
   for (const status of [1, 2, 3, 4]) {
     const [reply] = parser.push(replyFrame(25, 0, 0, status));
     assert.equal(reply.status, status);
-    assert.notEqual(statusText(status), 'OK');
   }
 });
 
@@ -199,7 +191,7 @@ test('session opens at 1500000 8N1 and handles fragmented feedback', async () =>
     device.push(frame.subarray(0, 3));
     device.push(frame.subarray(3));
   });
-  const { session, logs } = makeSession(port);
+  const { session } = makeSession(port);
   await session.open();
   assert.equal(port.options.baudRate, 1500000);
   assert.equal(port.options.dataBits, 8);
@@ -208,8 +200,6 @@ test('session opens at 1500000 8N1 and handles fragmented feedback', async () =>
   const reply = await session.setTemperature(-25, 100);
   assert.equal(reply.resistanceOhms, 89710);
   assert.deepEqual(port.writes[0], encodeSetTemperature(-25));
-  assert.ok(logs.some((entry) => entry.direction === 'TX'));
-  assert.ok(logs.some((entry) => entry.direction === 'RX'));
   await session.close();
   assert.equal(port.readReleases, 1);
   assert.equal(port.writeReleases, 1);
@@ -237,11 +227,9 @@ test('CRC-invalid feedback never resolves a request; valid matching ACK does', a
     device.push(replyFrame(26));
     device.push(replyFrame(25));
   });
-  const { session, logs } = makeSession(port);
+  const { session } = makeSession(port);
   await session.open();
   assert.equal((await session.setTemperature(25, 100)).temperature, 25);
-  assert.ok(logs.some((entry) => /CRC 校验失败/.test(entry.message)));
-  assert.ok(logs.some((entry) => /无匹配请求/.test(entry.message)));
   await session.close();
 });
 
@@ -399,7 +387,7 @@ test('a rejected port.open does not close a port this session never acquired', a
 
 test('port.close errors propagate and retain ownership until a successful retry', async () => {
   const port = new MockPort();
-  const { session, logs } = makeSession(port);
+  const { session } = makeSession(port);
   await session.open();
   port.close = async () => {
     port.closeCount += 1;
@@ -408,7 +396,6 @@ test('port.close errors propagate and retain ownership until a successful retry'
   await assert.rejects(session.close(), /设备仍被锁定/);
   await assert.rejects(session.open(), /正在切换状态/);
   await assert.rejects(session.setTemperature(25, 100), /未连接/);
-  assert.ok(logs.some((entry) => /设备仍被锁定/.test(entry.message)));
   await session.close();
   await session.close();
   assert.equal(port.closeCount, 2);
@@ -545,7 +532,7 @@ test('identity parser preserves every split boundary and keeps temperature repli
   const frame = identityFrame(0x91ab);
   for (let split = 1; split < frame.length; split += 1) {
     const identities = [];
-    const parser = new NtcFrameParser(() => {}, (reply) => identities.push(reply));
+    const parser = new NtcFrameParser((reply) => identities.push(reply));
     assert.deepEqual(parser.push(frame.subarray(0, split)), []);
     assert.equal(identities.length, 0);
     assert.equal(parser.push(Uint8Array.from([...frame.subarray(split), ...replyFrame(25)]))[0].temperature, 25);
@@ -555,7 +542,7 @@ test('identity parser preserves every split boundary and keeps temperature repli
 
 test('identity rejects bad CRC, signature, version and status, and ignores battery/IAP payloads', () => {
   const identities = [];
-  const parser = new NtcFrameParser(() => {}, (reply) => identities.push(reply));
+  const parser = new NtcFrameParser((reply) => identities.push(reply));
   const corrupt = identityFrame(1);
   corrupt[11] ^= 1;
   parser.push(corrupt);

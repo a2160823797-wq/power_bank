@@ -68,22 +68,11 @@ const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
 function automaticKind(): DeviceKind {
-  const kind = getWorkspaceView() === 'ntc' ? 'ntc' : 'battery';
   try {
     const saved = localStorage.getItem(LAST_KIND_KEY);
     if (saved === 'battery' || saved === 'ntc') return saved;
-    const oldKey =
-      kind === 'ntc'
-        ? 'powerbank.ntc-last-serial-port'
-        : 'powerbank.last-serial-port';
-    const otherKey =
-      kind === 'ntc'
-        ? 'powerbank.last-serial-port'
-        : 'powerbank.ntc-last-serial-port';
-    if (!localStorage.getItem(oldKey) && localStorage.getItem(otherKey))
-      return kind === 'ntc' ? 'battery' : 'ntc';
   } catch {}
-  return kind;
+  return getWorkspaceView() === 'ntc' ? 'ntc' : 'battery';
 }
 
 export function DeviceConnectionProvider({
@@ -200,15 +189,7 @@ export function DeviceConnectionProvider({
               .catch(() => undefined);
           },
         };
-        const preferred =
-          (await getSavedSerialPort(serial, LAST_PORT_KEY, ports)) ??
-          (await getSavedSerialPort(
-            serial,
-            kind === 'ntc'
-              ? 'powerbank.ntc-last-serial-port'
-              : 'powerbank.last-serial-port',
-            ports,
-          ));
+        const preferred = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
         if (automatic && !preferred) return;
         let result;
         if (!ports.length && !automatic) {

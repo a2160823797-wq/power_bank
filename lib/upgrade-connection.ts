@@ -26,7 +26,7 @@ export async function verifyUpgradePort(
     await connectedSession.identifyUpgrade();
     return;
   }
-  const session = new IapSerialSession(port, () => {});
+  const session = new IapSerialSession(port);
   try {
     await session.open();
     await session.identify(500);

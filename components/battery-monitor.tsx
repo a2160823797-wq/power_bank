@@ -123,11 +123,11 @@ export default function BatteryMonitor() {
         )}
 
         <dl className="battery-identity" aria-label={text.cellInfo}>
-          <div>
+          <div className="battery-identity-field">
             <dt>{text.model}</dt>
             <dd>{battery.batteryModel || <EmptyValue />}</dd>
           </div>
-          <div>
+          <div className="battery-identity-field">
             <dt>{text.code}</dt>
             <dd>{battery.batteryCode || <EmptyValue />}</dd>
           </div>
