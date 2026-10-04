@@ -179,7 +179,7 @@ export default function BatteryMonitor() {
                 {battery.temperatureC === null ? (
                   <EmptyValue />
                 ) : (
-                  battery.temperatureC.toFixed(1)
+                  battery.temperatureC.toFixed(0)
                 )}
                 <span>°C</span>
               </p>
@@ -281,7 +281,7 @@ export default function BatteryMonitor() {
                         <span className="battery-record-number">
                           {record.type === 'overvoltage'
                             ? (record.value / 1000).toFixed(3)
-                            : (record.value / 10).toFixed(1)}
+                            : (record.value / 10).toFixed(0)}
                         </span>
                         <span className="battery-record-unit">
                           <span className="battery-record-degree">
