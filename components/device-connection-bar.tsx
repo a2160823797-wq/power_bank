@@ -12,7 +12,7 @@ export function DeviceConnectionButton({ kind }: { kind: DeviceKind }) {
     disconnect,
   } = useDeviceConnection();
   const buttonText = {
-    disconnected: '选择设备',
+    disconnected: '连接设备',
     connecting: '连接中',
     connected: '断开连接',
     disconnecting: '断开中',
@@ -40,31 +40,20 @@ export function DeviceConnectionButton({ kind }: { kind: DeviceKind }) {
   );
 }
 
-export default function DeviceConnectionBar({ kind }: { kind: DeviceKind }) {
-  const { serialSupported, connection, error } = useDeviceConnection();
-  if (connection !== 'disconnected' && connection !== 'connecting') {
-    return error ? (
-      <p className="device-message device-connection-message" role="alert">
-        {error}
-      </p>
-    ) : null;
-  }
-
+export default function DeviceConnectionBar() {
+  const { serialSupported, error } = useDeviceConnection();
   return (
-    <section className="device-connection" aria-label="设备连接">
-      <div className="device-connection-panel">
-        <DeviceConnectionButton kind={kind} />
-        {serialSupported === false && (
-          <p className="device-message" role="alert">
-            当前浏览器不支持串口连接，请使用桌面版 Chrome 或 Edge。
-          </p>
-        )}
-        {error && (
-          <p className="device-message" role="alert">
-            {error}
-          </p>
-        )}
-      </div>
-    </section>
+    <>
+      {serialSupported === false && (
+        <p className="device-message device-connection-message" role="alert">
+          当前浏览器不支持串口连接，请使用桌面版 Chrome 或 Edge。
+        </p>
+      )}
+      {error && (
+        <p className="device-message device-connection-message" role="alert">
+          {error}
+        </p>
+      )}
+    </>
   );
 }

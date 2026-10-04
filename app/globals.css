@@ -159,20 +159,6 @@
   .workspace-nav button:disabled {
     opacity: 0.55;
   }
-  .device-connection {
-    display: grid;
-    width: 100%;
-    max-width: 1040px;
-    flex: 1;
-    place-items: center;
-    margin-inline: auto;
-    padding-block: 40px 56px;
-  }
-  .device-connection-panel {
-    width: 100%;
-    max-width: 420px;
-    text-align: center;
-  }
   .device-connection-message {
     width: 100%;
     max-width: 1040px;
@@ -193,6 +179,7 @@
   }
   .device-button {
     display: inline-flex;
+    min-width: 104px;
     min-height: 38px;
     align-items: center;
     justify-content: center;
@@ -209,11 +196,6 @@
     transition:
       background-color 150ms ease,
       border-color 150ms ease;
-  }
-  .device-connection .device-button {
-    min-width: 136px;
-    min-height: 42px;
-    padding: 10px 24px;
   }
   .device-button svg {
     width: 14px;

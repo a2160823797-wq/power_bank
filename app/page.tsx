@@ -82,7 +82,7 @@ function Workspace() {
     getWorkspaceView,
     getServerWorkspaceView,
   );
-  const { serialSupported, connection, connectionBusy, connected, withUpgrade } =
+  const { serialSupported, connectionBusy, connected, withUpgrade } =
     useDeviceConnection();
   const [running, setRunning] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
@@ -330,15 +330,13 @@ function Workspace() {
               {t.ntc}
             </button>
           </nav>
-          {(view === 'battery' || view === 'ntc') &&
-            connection !== 'disconnected' &&
-            connection !== 'connecting' && (
-              <DeviceConnectionButton kind={view} />
-            )}
+          {(view === 'battery' || view === 'ntc') && (
+            <DeviceConnectionButton kind={view} />
+          )}
         </div>
       </header>
       {(view === 'battery' || view === 'ntc') && (
-        <DeviceConnectionBar kind={view} />
+        <DeviceConnectionBar />
       )}
       <div hidden={view !== 'battery'}>
         <BatteryMonitor />
