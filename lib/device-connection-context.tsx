@@ -328,9 +328,11 @@ export function DeviceConnectionProvider({
     if (session && !session.isOpen) throw new Error('请先重试断开设备连接');
     markBusy(true);
     try {
-      if (session) return await session.withUpgrade(operation);
       const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      return await operation(await serial.requestPort());
+      const selectedPort = await serial.requestPort();
+      if (session && selectedPort === session.port)
+        return await session.withUpgrade(operation);
+      return await operation(selectedPort);
     } finally {
       markBusy(false);
     }

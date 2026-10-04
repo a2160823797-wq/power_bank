@@ -509,6 +509,7 @@ function Workspace() {
                   className="primary-action"
                   disabled={
                     busy ||
+                    connectionBusy ||
                     loadingFile ||
                     !serialSupported ||
                     Boolean(validationError)
