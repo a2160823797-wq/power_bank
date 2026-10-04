@@ -185,7 +185,8 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 function assertReadOnly(kind, ...ports) {
   for (const port of ports) {
     for (const frame of port.writes) {
-      if (kind === 'battery') assert.deepEqual(frame, batteryFrame(0x08));
+      if (kind === 'battery' || frame[1] === 0xbb)
+        assert.deepEqual(frame, batteryFrame(0x08));
       else {
         assert.equal(frame.length, 5);
         assert.deepEqual([...frame.subarray(0, 2)], [0xaa, 0x02]);

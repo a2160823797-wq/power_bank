@@ -45,6 +45,7 @@ async function probe(
     await session.open();
     checkCancellation(signal);
     await session.identify(kind, 500, signal);
+    if (kind === 'ntc') await session.identify('battery', 500, signal);
     checkCancellation(signal);
     if (!session.isOpen) throw new Error('设备在识别过程中已断开');
     return { port, session };
