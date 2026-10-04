@@ -130,9 +130,9 @@ export class DeviceSerialSession {
       : this.ntc!.identify(timeoutMs, signal);
   }
 
-  requestSnapshot() {
+  requestHistory() {
     if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
-    return this.battery!.requestSnapshot();
+    return this.battery!.requestHistory();
   }
 
   setTemperature(temperature: number, timeoutMs: number, signal?: AbortSignal) {
@@ -197,7 +197,8 @@ export class DeviceSerialSession {
         if (this.state !== 'upgrading' || !this.transport.isOpen)
           throw new Error('设备已断开连接');
         this.state = 'open';
-        await this.requestSnapshot();
+        await this.identify('battery', 500);
+        await this.requestHistory();
       } else {
         throw new Error('设备已断开连接');
       }

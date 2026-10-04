@@ -209,6 +209,70 @@ test('one physical connection supports both identities and temperature settings'
   assert.equal(port.closeCount, 1);
 });
 
+for (const kind of ['battery', 'ntc']) {
+  for (const remembered of [false, true]) {
+    test(`${kind} ${remembered ? 'remembered reconnection' : 'selected connection'} preserves handshake identity and reads only history`, async (t) => {
+      let acceptedSession;
+      let displayed;
+      const port = new MockPort((request) =>
+        request[1] === 0xbb && request[2] === 0x0a
+          ? [
+              batteryFrame(0x0a, Uint8Array.from([0, 0, 0])),
+              batteryFrame(0x0a, Uint8Array.from([2, 0, 0])),
+            ]
+          : deviceReply(request),
+      );
+      const callbacks = {
+        onData: (candidate, state) => {
+          if (candidate === acceptedSession) displayed = state;
+        },
+      };
+      const { session } = remembered
+        ? await discoverDevice([port], port, kind, undefined, callbacks)
+        : await connectSelectedDevice(port, kind, undefined, callbacks);
+      t.after(() => session.close());
+      assert.equal(
+        displayed,
+        undefined,
+        'candidate handshake data is hidden before accepting the device',
+      );
+      acceptedSession = session;
+      await session.requestHistory();
+      await tick();
+      assert.equal(displayed.batteryModel, 'SC2016');
+      assert.equal(displayed.batteryCode, 'BATTERY-001');
+      assert.equal(displayed.historyStatus, 'complete');
+      assert.equal(displayed.totalVoltageMv, null);
+      assert.deepEqual(
+        port.writes.filter((bytes) => bytes[1] === 0xbb),
+        [batteryFrame(0x08), batteryFrame(0x0a)],
+      );
+      if (kind === 'ntc')
+        assert.deepEqual([...port.writes[0].subarray(0, 2)], [0xaa, 0x02]);
+      assert.equal(port.writes.length, kind === 'ntc' ? 3 : 2);
+      port.controller.enqueue(
+        Uint8Array.from([
+          ...batteryFrame(0x02, Uint8Array.from([0, 250, 0])),
+          ...batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])),
+          ...batteryFrame(0x02, Uint8Array.from([0x12, 1, 0x88, 0x13])),
+        ]),
+      );
+      await tick();
+      assert.equal(displayed.temperatureC, 25);
+      assert.equal(displayed.totalVoltageMv, 5000);
+      assert.equal(displayed.cellCount, 1);
+      assert.deepEqual(displayed.cellVoltagesMv, [5000]);
+      assert.equal(displayed.batteryModel, 'SC2016');
+      assert.equal(displayed.batteryCode, 'BATTERY-001');
+      assert.equal(
+        port.writes.length,
+        kind === 'ntc' ? 3 : 2,
+        'telemetry does not trigger additional queries',
+      );
+    });
+  }
+}
+
 test('battery updates and NTC ACKs can be fragmented and glued on the same reader', async () => {
   const received = [];
   const voltage = batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13]));
@@ -231,7 +295,7 @@ test('battery updates and NTC ACKs can be fragmented and glued on the same reade
   });
   const [reply] = await Promise.all([
     session.setTemperature(25, 100),
-    session.requestSnapshot(),
+    session.requestHistory(),
   ]);
   assert.equal(reply.temperature, 25);
   assert.equal(received.at(-1).totalVoltageMv, 5000);
@@ -447,6 +511,14 @@ test('upgrade owns one exclusive logical channel and resumes both protocols with
   });
   assert.equal(result, 'updated');
   assert.equal(session.isOpen, true);
+  assert.equal(received.at(-1).batteryModel, 'SC2016');
+  assert.equal(received.at(-1).batteryCode, 'BATTERY-001');
+  assert.deepEqual(
+    port.writes.filter((bytes) => bytes[1] === 0xbb).map((bytes) => bytes[2]),
+    [8, 8, 10],
+  );
+  port.controller.enqueue(batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])));
+  await tick();
   assert.equal(received.at(-1).totalVoltageMv, 5000);
   await session.setTemperature(25, 100);
   assert.equal(port.openCount, 1);
@@ -614,6 +686,13 @@ test('universal IAP transfers non-Cortex firmware in 1024-byte YMODEM packets on
     [1500000],
   );
   assert.equal(port.closeCount, 0);
+  assert.equal(received.at(-1).batteryModel, 'SC2016');
+  assert.deepEqual(
+    port.writes.filter((bytes) => bytes[1] === 0xbb).map((bytes) => bytes[2]),
+    [8, 8, 10],
+  );
+  port.controller.enqueue(batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])));
+  await tick();
   assert.equal(received.at(-1).totalVoltageMv, 5000);
   await session.setTemperature(25, 100);
 });
@@ -901,6 +980,14 @@ test('universal IAP accepts fragmented command and YMODEM acknowledgements on th
   assert.equal(phase, 'done');
   assert.equal(progress.at(-1), 100);
   assert.equal(session.isOpen, true);
+  assert.equal(received.at(-1).batteryModel, 'SC2016');
+  assert.equal(received.at(-1).batteryCode, 'BATTERY-001');
+  assert.deepEqual(
+    port.writes.filter((bytes) => bytes[1] === 0xbb).map((bytes) => bytes[2]),
+    [8, 8, 10],
+  );
+  port.controller.enqueue(batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])));
+  await tick();
   assert.equal(received.at(-1).totalVoltageMv, 5000);
   await session.setTemperature(25, 100);
   assert.equal(port.openCount, 1);

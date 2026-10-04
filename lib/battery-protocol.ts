@@ -396,19 +396,14 @@ export class BatterySerialSession {
     });
   }
 
-  requestSnapshot() {
-    const commands: [number, Uint8Array][] = [0, 1, 2, 3, 13, 15, 16, 0x12].map(
-      (type) => [0x02, new Uint8Array([type])],
-    );
-    commands.push(
-      [0x08, new Uint8Array()],
-      [0x0a, new Uint8Array()],
-    );
-    return this.request(commands);
-  }
-
   requestHistory() {
-    return this.request([[0x0a, new Uint8Array()]]);
+    if (!this.active) return Promise.reject(new Error('请先连接设备'));
+    this.historyStarted = false;
+    this.historyInvalid = false;
+    this.state.historyStatus = 'receiving';
+    this.state.historyExpected = null;
+    this.emit();
+    return this.queueWrite([[0x0a, new Uint8Array()]]);
   }
 
   identify(timeoutMs: number, signal?: AbortSignal): Promise<BatteryIdentity> {
@@ -452,16 +447,6 @@ export class BatterySerialSession {
       pending.reject(error instanceof Error ? error : new Error(String(error)));
     });
     return Promise.all([response, write]).then(([identity]) => identity);
-  }
-
-  private request(commands: [number, Uint8Array][]) {
-    if (!this.active) return Promise.reject(new Error('请先连接设备'));
-    this.historyStarted = false;
-    this.historyInvalid = false;
-    this.state.historyStatus = 'receiving';
-    this.state.historyExpected = null;
-    this.emit();
-    return this.queueWrite(commands);
   }
 
   private queueWrite(

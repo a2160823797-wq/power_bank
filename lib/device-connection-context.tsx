@@ -236,14 +236,13 @@ export function DeviceConnectionProvider({
           return;
         }
         if (!session.isOpen) throw new Error('设备已断开连接');
-        setBattery(createBatteryState());
         setSelectionRequired(false);
         setConnection('connected');
         rememberSerialPort(LAST_PORT_KEY, result.port);
         try {
           localStorage.setItem(LAST_KIND_KEY, kind);
         } catch {}
-        await session.requestSnapshot();
+        await session.requestHistory();
       } catch (reason) {
         let releaseFailed = false;
         let message = messageOf(reason);

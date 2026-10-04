@@ -416,14 +416,12 @@ test('valid unrelated reference commands during history transfer are ignored wit
   assert.equal(f.state.historyStatus, 'complete');
 });
 
-test('snapshot and concurrent history requests queue whole frames without polling', async (t) => {
+test('concurrent history requests send only empty-payload history frames without polling', async (t) => {
   const f = await fixture(t);
-  await Promise.all([f.session.requestSnapshot(), f.session.requestHistory()]);
+  await Promise.all([f.session.requestHistory(), f.session.requestHistory()]);
   assert.deepEqual(
     f.port.writes.map((bytes) => [bytes[2], Array.from(bytes.slice(5, -1))]),
     [
-      ...[0, 1, 2, 3, 13, 15, 16, 0x12].map((value) => [2, [value]]),
-      [8, []],
       [10, []],
       [10, []],
     ],
@@ -432,12 +430,12 @@ test('snapshot and concurrent history requests queue whole frames without pollin
     assert.deepEqual([...bytes], [0xaa, 0xbb, 0x0a, 0, 0, 0xac]);
   }
   await tick();
-  assert.equal(f.port.writes.length, 11);
+  assert.equal(f.port.writes.length, 2);
 });
 
 test('concurrent close cancels pending read and command queue, releases once, suppresses late callbacks', async (t) => {
   const f = await fixture(t);
-  const request = f.session.requestSnapshot();
+  const request = f.session.requestHistory();
   const updates = f.updates.length;
   await Promise.all([
     f.session.close(),
