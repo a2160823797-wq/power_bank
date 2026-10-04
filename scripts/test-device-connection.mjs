@@ -252,7 +252,7 @@ for (const kind of ['battery', 'ntc']) {
       assert.equal(port.writes.length, kind === 'ntc' ? 3 : 2);
       port.controller.enqueue(
         Uint8Array.from([
-          ...batteryFrame(0x02, Uint8Array.from([0, 250, 0])),
+          ...batteryFrame(0x02, Uint8Array.from([0, 25, 0])),
           ...batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])),
           ...batteryFrame(0x02, Uint8Array.from([0x12, 1, 0x88, 0x13])),
         ]),

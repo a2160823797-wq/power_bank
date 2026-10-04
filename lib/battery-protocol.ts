@@ -6,12 +6,12 @@ const MAX_PAYLOAD = 512;
 
 export interface SafetyRecord {
   type: 'overvoltage' | 'overtemperature';
-  value: number; // 过充电压为 mV，异常温度为有符号 0.1℃
+  value: number; // 过充电压为 mV，异常温度为有符号整数℃
   timeUnixSeconds: number; // 转换后的 UTC 秒
 }
 
 export interface BatteryState {
-  temperatureC: number | null;
+  temperatureC: number | null; // 有符号整数℃
   totalVoltageMv: number | null;
   cellVoltagesMv: (number | null)[];
   cellCount: number | null;
@@ -509,7 +509,7 @@ export class BatterySerialSession {
     if (command === 0x02) {
       const type = data[0];
       if (type <= 3 && data.length === 3) {
-        if (type === 0) this.state.temperatureC = view.getInt16(1, true) / 10;
+        if (type === 0) this.state.temperatureC = view.getInt16(1, true);
         else if (type === 1)
           this.state.totalVoltageMv = view.getUint16(1, true);
         else {

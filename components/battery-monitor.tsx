@@ -271,7 +271,7 @@ export default function BatteryMonitor() {
                         <span className="battery-record-number">
                           {record.type === 'overvoltage'
                             ? (record.value / 1000).toFixed(3)
-                            : (record.value / 10).toFixed(0)}
+                            : record.value.toFixed(0)}
                         </span>
                         <span className="battery-record-unit">
                           <span className="battery-record-degree">

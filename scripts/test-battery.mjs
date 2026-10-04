@@ -177,7 +177,7 @@ test('fragmentation, consecutive frames, CRC errors, IAP bytes and noise resynch
   const parser = new BatteryFrameParser((cmd, payload) =>
     received.push([cmd, [...payload]]),
   );
-  const first = frame(0x82, [0, ...u16(-123)]);
+  const first = frame(0x82, [0, ...u16(-12)]);
   const broken = frame(2, [1, ...u16(7000)]);
   broken[broken.length - 1] ^= 1;
   const stream = data([
@@ -198,7 +198,7 @@ test('fragmentation, consecutive frames, CRC errors, IAP bytes and noise resynch
   ]);
   for (const byte of stream) parser.push(data([byte]));
   assert.deepEqual(received, [
-    [2, [0, ...u16(-123)]],
+    [2, [0, ...u16(-12)]],
     [2, [1, 0, 0]],
     [2, [2, ...u16(3700)]],
   ]);
@@ -249,8 +249,8 @@ test('oversized ASCII field lengths recover at the next frame without scanning b
     const parser = new BatteryFrameParser((command, payload) =>
       received.push([command, [...payload]]),
     );
-    parser.push(data([...prefix, ...frame(2, [0, 250, 0])]));
-    assert.deepEqual(received, [[2, [0, 250, 0]]]);
+    parser.push(data([...prefix, ...frame(2, [0, 25, 0])]));
+    assert.deepEqual(received, [[2, [0, 25, 0]]]);
   }
 });
 
@@ -271,10 +271,10 @@ test('length-prefixed ASCII permits 255-byte fields but rejects embedded NUL wit
 
 test('signed negative temperature and genuine zero voltage are preserved', async (t) => {
   const f = await fixture(t);
-  await f.send(0x82, [0, ...u16(-123)]);
+  await f.send(0x82, [0, ...u16(-12)]);
   await f.send(2, [1, 0, 0]);
   await f.send(2, [3, 0, 0]);
-  assert.equal(f.state.temperatureC, -12.3);
+  assert.equal(f.state.temperatureC, -12);
   assert.equal(f.state.totalVoltageMv, 0);
   assert.deepEqual(f.state.cellVoltagesMv, [null, 0]);
   assert.equal(f.state.cellCount, null);
@@ -330,20 +330,21 @@ test('removed device-time frames leave battery state and last-received time unch
 test('history keeps every record in order and needs matching begin, count and end before complete', async (t) => {
   const f = await fixture(t);
   await f.send(0x0a, [0, ...u16(3)]);
-  await f.send(0x0a, historyRecord());
-  await f.send(0x8a, historyRecord());
+  await f.send(0x0a, historyRecord({ type: 1, value: 65 }));
+  await f.send(0x8a, historyRecord({ type: 1, value: 65 }));
   assert.equal(f.state.records.length, 2);
   assert.deepEqual(f.state.records[0], f.state.records[1]);
+  assert.equal(f.state.records[0].value, 65);
   assert.equal(f.state.historyStatus, 'receiving');
   await f.send(
     0x0a,
-    historyRecord({ type: 1, value: -120, time: timestamp + 60 }),
+    historyRecord({ type: 1, value: -12, time: timestamp + 60 }),
   );
   await f.send(0x0a, [2, ...u16(3)]);
   assert.equal(f.state.historyStatus, 'complete');
   assert.deepEqual(f.state.records[2], {
     type: 'overtemperature',
-    value: -120,
+    value: -12,
     timeUnixSeconds: timestamp + 60 - 28800,
   });
   assert.equal(f.state.records[0].timeUnixSeconds, timestamp - 28800);
@@ -627,7 +628,7 @@ test('identity ignores old readings, unrelated data, invalid CRC and malformed t
   const broken = frame(8, identityPayload('BROKEN', 'CRC'));
   broken[broken.length - 1] ^= 1;
   f.port.push(broken);
-  await f.send(2, [0, 250, 0]);
+  await f.send(2, [0, 25, 0]);
   await f.send(3, u32(timestamp));
   for (const payload of [
     [0, 1, 65],

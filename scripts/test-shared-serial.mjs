@@ -571,7 +571,7 @@ test('real battery and NTC sessions parse mixed RX and write independently over 
         2,
         true,
       );
-      const telemetry = batteryFrame(0x02, Uint8Array.of(0, 250, 0));
+      const telemetry = batteryFrame(0x02, Uint8Array.of(0, 25, 0));
       reply = Uint8Array.from([
         ...telemetry,
         ...ntcFrame(0x81, temperature),
