@@ -183,7 +183,11 @@ export default function BatteryMonitor() {
             aria-label={text.historyRecords}
           >
             {recordGroups.map(([type, records]) => (
-              <details className="battery-record-group" key={type}>
+              <details
+                className="battery-record-group"
+                key={type}
+                open={recordGroups.length === 1}
+              >
                 <summary>
                   <span>{recordTypeLabel(type)}</span>
                   <span className="battery-record-count">
