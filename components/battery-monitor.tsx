@@ -19,7 +19,6 @@ const text = {
   totalVoltage: '电池总电压',
   temperature: '电池温度',
   cellVoltages: '各串电压',
-  cellCount: (count: number) => `${count} 串电池`,
   cell: (index: number) => `第 ${index} 串`,
   cellInfo: '电芯信息',
   model: '型号',
@@ -197,14 +196,8 @@ export default function BatteryMonitor() {
             {visibleCellCount > 1 && (
               <section
                 className="battery-panel"
-                aria-labelledby="battery-cells-title"
+                aria-label={text.cellVoltages}
               >
-                <div className="battery-panel-heading">
-                  <h2 id="battery-cells-title">{text.cellVoltages}</h2>
-                  <span className="battery-section-note">
-                    {text.cellCount(visibleCellCount)}
-                  </span>
-                </div>
                 <div className="battery-cell-grid">
                   {Array.from({ length: visibleCellCount }, (_, index) => (
                     <div className="battery-cell" key={index}>

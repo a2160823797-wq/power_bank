@@ -177,11 +177,6 @@
     justify-content: space-between;
     gap: 12px;
   }
-  .battery-section-note {
-    color: var(--foreground);
-    font-size: 0.875rem;
-    line-height: 1.5;
-  }
   .battery-empty-value {
     display: inline-block;
     width: 20px;
@@ -197,7 +192,6 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
-    margin-top: 16px;
   }
   .battery-cell {
     min-width: 0;
