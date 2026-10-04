@@ -104,65 +104,66 @@ export default function NtcSimulator() {
   if (!connected) return null;
 
   return (
-    <section className="ntc-content" aria-label="温度模拟">
+    <section className="ntc-panel" aria-labelledby="ntc-title">
+      <h2 id="ntc-title">温度模拟</h2>
       {message && <output className="ntc-alert">{message}</output>}
-      <section className="ntc-panel">
-        <div className="ntc-temperature">
-          <input
-            className="ntc-temperature-input"
-            type="text"
-            inputMode="numeric"
-            value={temperatureInput}
-            style={{ width: `${Math.max(temperatureInput.length, 1)}ch` }}
-            aria-label="设定温度"
-            onChange={(e) => setTemperatureInput(e.currentTarget.value)}
-            onBlur={(e) => commitTemperature(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-          />
-          <small>℃</small>
-        </div>
+      <div className="ntc-temperature">
         <input
-          id="ntc-temperature-slider"
-          className="ntc-slider"
-          type="range"
-          min={NTC_MIN_TEMPERATURE}
-          max={NTC_MAX_TEMPERATURE}
-          step="1"
-          value={temperature}
+          className="ntc-temperature-input"
+          type="text"
+          inputMode="numeric"
+          disabled={connectionBusy}
+          value={temperatureInput}
+          style={{ width: `${Math.max(temperatureInput.length, 1)}ch` }}
           aria-label="设定温度"
-          onChange={(e) => {
-            setTemperature(Number(e.currentTarget.value));
-            setTemperatureInput(e.currentTarget.value);
-          }}
-          onPointerDown={(e) =>
-            e.currentTarget.setPointerCapture(e.pointerId)
-          }
-          onPointerUp={(e) =>
-            sendTemperature(Number(e.currentTarget.value))
-          }
-          onKeyUp={(e) => {
-            if (
-              [
-                'ArrowLeft',
-                'ArrowRight',
-                'ArrowUp',
-                'ArrowDown',
-                'Home',
-                'End',
-                'PageUp',
-                'PageDown',
-              ].includes(e.key)
-            ) {
-              sendTemperature(Number(e.currentTarget.value));
+          onChange={(e) => setTemperatureInput(e.currentTarget.value)}
+          onBlur={(e) => commitTemperature(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              e.currentTarget.blur();
             }
           }}
         />
-      </section>
+        <small>℃</small>
+      </div>
+      <input
+        id="ntc-temperature-slider"
+        className="ntc-slider"
+        type="range"
+        min={NTC_MIN_TEMPERATURE}
+        max={NTC_MAX_TEMPERATURE}
+        step="1"
+        disabled={connectionBusy}
+        value={temperature}
+        aria-label="设定温度"
+        onChange={(e) => {
+          setTemperature(Number(e.currentTarget.value));
+          setTemperatureInput(e.currentTarget.value);
+        }}
+        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+        onPointerUp={(e) => sendTemperature(Number(e.currentTarget.value))}
+        onKeyUp={(e) => {
+          if (
+            [
+              'ArrowLeft',
+              'ArrowRight',
+              'ArrowUp',
+              'ArrowDown',
+              'Home',
+              'End',
+              'PageUp',
+              'PageDown',
+            ].includes(e.key)
+          ) {
+            sendTemperature(Number(e.currentTarget.value));
+          }
+        }}
+      />
+      <div className="ntc-range" aria-hidden="true">
+        <span>{NTC_MIN_TEMPERATURE}℃</span>
+        <span>{NTC_MAX_TEMPERATURE}℃</span>
+      </div>
     </section>
   );
 }

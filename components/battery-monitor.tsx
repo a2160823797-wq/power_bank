@@ -1,5 +1,6 @@
 import { selectSafetyRecords, type SafetyRecord } from '@/lib/battery-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
+import NtcSimulator from './ntc-simulator';
 
 const text = {
   monitoring: '电池监测',
@@ -51,6 +52,12 @@ function recordTypeLabel(type: SafetyRecord['type']) {
   return text.dischargeOvertemperature;
 }
 
+function recordTypeOrder(type: SafetyRecord['type']) {
+  if (type.startsWith('overvoltage-'))
+    return Number(type.slice('overvoltage-'.length));
+  return type === 'charge-overtemperature' ? 17 : 18;
+}
+
 function formatVoltage(millivolts: number | null) {
   return millivolts === null ? <EmptyValue /> : (millivolts / 1000).toFixed(3);
 }
@@ -65,10 +72,18 @@ function EmptyValue() {
 
 export default function BatteryMonitor() {
   const { connected, battery } = useDeviceConnection();
-  if (!connected) return null;
 
   const visibleCellCount = battery.cellCount ?? 2;
   const visibleRecords = selectSafetyRecords(battery.records);
+  const recordsByType = new Map<SafetyRecord['type'], SafetyRecord[]>();
+  for (const record of visibleRecords) {
+    const records = recordsByType.get(record.type);
+    if (records) records.push(record);
+    else recordsByType.set(record.type, [record]);
+  }
+  const recordGroups = [...recordsByType].sort(
+    ([a], [b]) => recordTypeOrder(a) - recordTypeOrder(b),
+  );
   const historyDescription = {
     unread: '',
     receiving: text.receiving(battery.records.length, battery.historyExpected),
@@ -80,59 +95,66 @@ export default function BatteryMonitor() {
   }[battery.historyStatus];
 
   return (
-    <section className="battery-content" aria-label={text.monitoring}>
-      <section
-        className="battery-panel battery-overview"
-        aria-label={text.liveMetrics}
-      >
-        <div className="battery-metrics">
-          <div className="battery-metric">
-            <p className="battery-field-label">{text.totalVoltage}</p>
-            <p className="battery-metric-value">
-              {formatVoltage(battery.totalVoltageMv)}
-              <span>V</span>
-            </p>
-          </div>
-          <div className="battery-metric">
-            <p className="battery-field-label">{text.temperature}</p>
-            <p className="battery-metric-value">
-              {battery.temperatureC === null ? (
-                <EmptyValue />
-              ) : (
-                battery.temperatureC.toFixed(0)
-              )}
-              <span>°C</span>
-            </p>
-          </div>
-        </div>
-
-        {visibleCellCount > 1 && (
-          <section className="battery-cells" aria-label={text.cellVoltages}>
-            <div className="battery-cell-grid">
-              {Array.from({ length: visibleCellCount }, (_, index) => (
-                <div className="battery-cell" key={index}>
-                  <span>{text.cell(index + 1)}</span>
-                  <strong>
-                    {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
-                    <small>V</small>
-                  </strong>
-                </div>
-              ))}
+    <section
+      className="battery-content"
+      aria-label={text.monitoring}
+      hidden={!connected}
+    >
+      <div className="battery-dashboard">
+        <section
+          className="battery-panel battery-overview"
+          aria-label={text.liveMetrics}
+        >
+          <div className="battery-metrics">
+            <div className="battery-metric">
+              <p className="battery-field-label">{text.totalVoltage}</p>
+              <p className="battery-metric-value">
+                {formatVoltage(battery.totalVoltageMv)}
+                <span>V</span>
+              </p>
             </div>
-          </section>
-        )}
+            <div className="battery-metric">
+              <p className="battery-field-label">{text.temperature}</p>
+              <p className="battery-metric-value">
+                {battery.temperatureC === null ? (
+                  <EmptyValue />
+                ) : (
+                  battery.temperatureC.toFixed(0)
+                )}
+                <span>°C</span>
+              </p>
+            </div>
+          </div>
 
-        <dl className="battery-identity" aria-label={text.cellInfo}>
-          <div className="battery-identity-field">
-            <dt>{text.model}</dt>
-            <dd>{battery.batteryModel || <EmptyValue />}</dd>
-          </div>
-          <div className="battery-identity-field">
-            <dt>{text.code}</dt>
-            <dd>{battery.batteryCode || <EmptyValue />}</dd>
-          </div>
-        </dl>
-      </section>
+          {visibleCellCount > 1 && (
+            <section className="battery-cells" aria-label={text.cellVoltages}>
+              <div className="battery-cell-grid">
+                {Array.from({ length: visibleCellCount }, (_, index) => (
+                  <div className="battery-cell" key={index}>
+                    <span>{text.cell(index + 1)}</span>
+                    <strong>
+                      {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
+                      <small>V</small>
+                    </strong>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <dl className="battery-identity" aria-label={text.cellInfo}>
+            <div className="battery-identity-field">
+              <dt>{text.model}</dt>
+              <dd>{battery.batteryModel || <EmptyValue />}</dd>
+            </div>
+            <div className="battery-identity-field">
+              <dt>{text.code}</dt>
+              <dd>{battery.batteryCode || <EmptyValue />}</dd>
+            </div>
+          </dl>
+        </section>
+        <NtcSimulator />
+      </div>
 
       <section
         className={`battery-panel battery-history${visibleRecords.length === 0 ? ' battery-history-compact' : ''}`}
@@ -156,42 +178,54 @@ export default function BatteryMonitor() {
           </p>
         )}
         {visibleRecords.length > 0 && (
-          <ol className="battery-records" aria-label={text.historyRecords}>
-            {visibleRecords.map((record, index) => (
-              <li key={index}>
-                <span className="battery-record-index" aria-hidden="true">
-                  {index + 1}
-                </span>
-                <div className="battery-record-heading">
-                  <h3>{recordTypeLabel(record.type)}</h3>
-                </div>
-                <p
-                  className="battery-record-value"
-                  aria-label={text.recordValue}
-                >
-                  <span className="battery-record-number">
-                    {record.type.startsWith('overvoltage-')
-                      ? (record.value / 1000).toFixed(3)
-                      : record.value.toFixed(0)}
+          <div
+            className="battery-record-groups"
+            aria-label={text.historyRecords}
+          >
+            {recordGroups.map(([type, records]) => (
+              <details className="battery-record-group" key={type}>
+                <summary>
+                  <span>{recordTypeLabel(type)}</span>
+                  <span className="battery-record-count">
+                    {records.length} 条
                   </span>
-                  <span className="battery-record-unit">
-                    <span className="battery-record-degree">
-                      {record.type.startsWith('overvoltage-') ? '' : '°'}
-                    </span>
-                    <span className="battery-record-symbol">
-                      {record.type.startsWith('overvoltage-') ? 'V' : 'C'}
-                    </span>
-                  </span>
-                </p>
-                <p
-                  className="battery-record-time"
-                  aria-label={text.occurrenceTime}
+                </summary>
+                <ol
+                  className="battery-records"
+                  aria-label={recordTypeLabel(type)}
                 >
-                  {formatTime(record.timeUnixSeconds)}
-                </p>
-              </li>
+                  {records.map((record, index) => (
+                    <li key={index}>
+                      <p
+                        className="battery-record-value"
+                        aria-label={text.recordValue}
+                      >
+                        <span className="battery-record-number">
+                          {record.type.startsWith('overvoltage-')
+                            ? (record.value / 1000).toFixed(3)
+                            : record.value.toFixed(0)}
+                        </span>
+                        <span className="battery-record-unit">
+                          <span className="battery-record-degree">
+                            {record.type.startsWith('overvoltage-') ? '' : '°'}
+                          </span>
+                          <span className="battery-record-symbol">
+                            {record.type.startsWith('overvoltage-') ? 'V' : 'C'}
+                          </span>
+                        </span>
+                      </p>
+                      <p
+                        className="battery-record-time"
+                        aria-label={text.occurrenceTime}
+                      >
+                        {formatTime(record.timeUnixSeconds)}
+                      </p>
+                    </li>
+                  ))}
+                </ol>
+              </details>
             ))}
-          </ol>
+          </div>
         )}
       </section>
     </section>

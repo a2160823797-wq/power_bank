@@ -1,13 +1,11 @@
-export type WorkspaceView = 'battery' | 'ntc' | 'upgrade';
+export type WorkspaceView = 'battery' | 'upgrade';
 
 const VIEW_KEY = 'powerbank.view';
 
 export function getWorkspaceView(): WorkspaceView {
   try {
     const savedView = localStorage.getItem(VIEW_KEY);
-    return savedView === 'ntc' || savedView === 'upgrade'
-      ? savedView
-      : 'battery';
+    return savedView === 'upgrade' ? savedView : 'battery';
   } catch {
     return 'battery';
   }

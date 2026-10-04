@@ -164,8 +164,7 @@
     max-width: 1040px;
     margin-inline: auto;
   }
-  .battery-content,
-  .ntc-content {
+  .battery-content {
     padding-top: 24px;
   }
   .battery-panel,

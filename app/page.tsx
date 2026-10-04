@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import BatteryMonitor from '@/components/battery-monitor';
 import FirmwareUpdater from '@/components/firmware-updater';
-import NtcSimulator from '@/components/ntc-simulator';
 import {
   getWorkspaceView,
   setWorkspaceView,
@@ -18,7 +17,6 @@ import {
 const t = {
   navigation: '功能导航',
   battery: '电池监测',
-  ntc: '温度模拟',
   upgrade: '固件升级',
 };
 
@@ -86,26 +84,13 @@ function Workspace() {
             >
               {t.upgrade}
             </button>
-            <button
-              type="button"
-              aria-pressed={view === 'ntc'}
-              disabled={connectionBusy}
-              onClick={() => changeView('ntc')}
-            >
-              {t.ntc}
-            </button>
           </nav>
-          {(view === 'battery' || view === 'ntc') && (
-            <DeviceConnectionButton kind={view} />
-          )}
+          {view === 'battery' && <DeviceConnectionButton kind="battery" />}
         </div>
       </header>
-      {(view === 'battery' || view === 'ntc') && <DeviceConnectionBar />}
+      {view === 'battery' && <DeviceConnectionBar />}
       <div hidden={view !== 'battery'}>
         <BatteryMonitor />
-      </div>
-      <div className="ntc-workspace" hidden={view !== 'ntc'}>
-        <NtcSimulator />
       </div>
       <FirmwareUpdater active={view === 'upgrade'} />
     </main>

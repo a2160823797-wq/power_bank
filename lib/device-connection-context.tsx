@@ -28,7 +28,6 @@ import {
   verifyUpgradePort,
   UpgradePortReleaseError,
 } from './upgrade-connection';
-import { getWorkspaceView } from './workspace-view';
 
 type Connection =
   | 'disconnected'
@@ -73,7 +72,7 @@ function automaticKind(): DeviceKind {
     const saved = localStorage.getItem(LAST_KIND_KEY);
     if (saved === 'battery' || saved === 'ntc') return saved;
   } catch {}
-  return getWorkspaceView() === 'ntc' ? 'ntc' : 'battery';
+  return 'battery';
 }
 
 export function DeviceConnectionProvider({

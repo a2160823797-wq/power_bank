@@ -1,21 +1,17 @@
 @layer components {
-  .ntc-workspace {
-    width: 100%;
-  }
-  .ntc-content {
-    width: 100%;
-    max-width: 1040px;
-    margin-inline: auto;
-    padding-bottom: 40px;
+  .ntc-panel h2 {
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.5;
   }
   .ntc-temperature {
     display: flex;
     justify-content: center;
     align-items: baseline;
     gap: 8px;
-    margin: 24px 0;
+    margin: 16px 0;
     color: var(--foreground);
-    font: 600 3rem/1.15 var(--font-sans);
+    font: 600 2.5rem/1.15 var(--font-sans);
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
   }
@@ -50,6 +46,19 @@
     height: 28px;
     accent-color: var(--primary);
     cursor: pointer;
+  }
+  .ntc-slider:disabled,
+  .ntc-temperature-input:disabled {
+    cursor: not-allowed;
+    opacity: 0.4;
+  }
+  .ntc-range {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1.5;
   }
   .ntc-alert {
     display: block;

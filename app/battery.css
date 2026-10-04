@@ -6,6 +6,15 @@
     margin-inline: auto;
     padding-bottom: 40px;
   }
+  .battery-dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+    gap: 12px;
+    align-items: start;
+  }
+  .battery-dashboard > * {
+    min-width: 0;
+  }
   .battery-metrics {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -140,18 +149,63 @@
     font-size: 0.8125rem;
     line-height: 1.6;
   }
+  .battery-record-groups {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .battery-record-group {
+    min-width: 0;
+    padding-inline: 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .battery-record-group > summary {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding-block: 12px;
+    list-style: none;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+  .battery-record-group > summary::-webkit-details-marker {
+    display: none;
+  }
+  .battery-record-group > summary::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(-45deg);
+  }
+  .battery-record-group[open] > summary::before {
+    transform: rotate(45deg);
+  }
+  .battery-record-group > summary:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+    border-radius: 4px;
+  }
+  .battery-record-count {
+    margin-left: auto;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+  }
   .battery-records {
     display: grid;
     grid-template-columns: 1fr;
-    margin-top: 12px;
+    border-top: 1px solid var(--border);
     list-style: none;
   }
   .battery-records > li {
     display: grid;
-    grid-template-columns: 2ch minmax(0, 1fr) minmax(100px, 0.7fr) minmax(
-        180px,
-        1fr
-      );
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: center;
     gap: 12px;
     min-width: 0;
@@ -160,31 +214,11 @@
   .battery-records > li + li {
     border-top: 1px solid var(--border);
   }
-  .battery-record-index {
-    font-size: 1rem;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-  }
-  .battery-record-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: 6px 12px;
-    font-size: 1rem;
-    line-height: 1.5;
-  }
-  .battery-record-heading h3 {
-    font-size: inherit;
-    font-weight: 400;
-  }
-  .battery-record-heading > span {
-    font-size: 0.875rem;
-  }
   .battery-record-value {
     display: grid;
     grid-template-columns: 6ch 1.2em;
     align-items: baseline;
-    justify-content: center;
+    justify-content: start;
     column-gap: 6px;
     font-size: 1.125rem;
     font-weight: 600;
@@ -207,14 +241,13 @@
     line-height: 1.5;
     font-variant-numeric: tabular-nums;
     text-align: right;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 }
 
 @media (max-width: 760px) {
-  .battery-records > li {
-    grid-template-columns: 2ch minmax(0, 1fr) 96px 158px;
-    gap: 12px;
+  .battery-dashboard {
+    grid-template-columns: minmax(0, 1fr);
   }
   .battery-record-time {
     font-size: 0.875rem;
@@ -223,15 +256,10 @@
 
 @media (max-width: 480px) {
   .battery-records > li {
-    grid-template-columns: 2ch minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     gap: 6px 16px;
   }
-  .battery-record-index {
-    grid-row: 1 / span 2;
-    align-self: start;
-  }
   .battery-record-time {
-    grid-column: 2 / -1;
     text-align: left;
   }
   .battery-content {
