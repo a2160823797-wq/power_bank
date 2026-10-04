@@ -402,13 +402,13 @@ export class BatterySerialSession {
     );
     commands.push(
       [0x08, new Uint8Array()],
-      [0x0a, new Uint8Array([0])],
+      [0x0a, new Uint8Array()],
     );
     return this.request(commands);
   }
 
   requestHistory() {
-    return this.request([[0x0a, new Uint8Array([0])]]);
+    return this.request([[0x0a, new Uint8Array()]]);
   }
 
   identify(timeoutMs: number, signal?: AbortSignal): Promise<BatteryIdentity> {

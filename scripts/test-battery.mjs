@@ -363,6 +363,7 @@ test('zero history only completes with matching begin/end, never missing respons
   const f = await fixture(t);
   assert.equal(f.state.historyStatus, 'unread');
   await f.session.requestHistory();
+  assert.deepEqual([...f.port.writes.at(-1)], [0xaa, 0xbb, 0x0a, 0, 0, 0xac]);
   assert.equal(f.state.historyStatus, 'receiving');
   assert.equal(f.state.lastReceivedAt, null);
   await f.send(0x0a, [2, 0, 0]);
@@ -423,10 +424,13 @@ test('snapshot and concurrent history requests queue whole frames without pollin
     [
       ...[0, 1, 2, 3, 13, 15, 16, 0x12].map((value) => [2, [value]]),
       [8, []],
-      [10, [0]],
-      [10, [0]],
+      [10, []],
+      [10, []],
     ],
   );
+  for (const bytes of f.port.writes.filter((bytes) => bytes[2] === 0x0a)) {
+    assert.deepEqual([...bytes], [0xaa, 0xbb, 0x0a, 0, 0, 0xac]);
+  }
   await tick();
   assert.equal(f.port.writes.length, 11);
 });
