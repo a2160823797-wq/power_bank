@@ -24,12 +24,13 @@
     min-width: 0;
     padding: 0;
     border: 0;
-    border-bottom: 1px solid transparent;
+    border-bottom: 1px solid var(--muted-foreground);
     border-radius: 0;
     outline: none;
     background: transparent;
     color: inherit;
     font: inherit;
+    cursor: text;
     text-align: center;
     letter-spacing: 0;
   }

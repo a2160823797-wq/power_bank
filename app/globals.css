@@ -287,36 +287,17 @@
   .transfer-status {
     margin-top: 24px;
   }
-  .transfer-progress {
+  .transfer-caption {
     display: block;
-    width: 100%;
-    height: 5px;
-    overflow: hidden;
-    border: 0;
-    border-radius: 999px;
-    appearance: none;
-    background: #3a3a3e;
-    color: var(--accent-foreground);
-    accent-color: var(--accent-foreground);
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    line-height: 1.5;
   }
-  .transfer-progress::-webkit-progress-bar {
-    border-radius: 999px;
-    background: #3a3a3e;
+  .transfer-status[data-state='success'] .transfer-caption {
+    color: var(--success);
   }
-  .transfer-progress::-webkit-progress-value {
-    border-radius: 999px;
-    background: var(--accent-foreground);
-    transition: width 160ms linear;
-  }
-  .transfer-progress::-moz-progress-bar {
-    border-radius: 999px;
-    background: var(--accent-foreground);
-  }
-  .transfer-status[data-state='success'] .transfer-progress::-webkit-progress-value {
-    background: var(--success);
-  }
-  .transfer-status[data-state='success'] .transfer-progress::-moz-progress-bar {
-    background: var(--success);
+  .transfer-status[data-state='error'] .transfer-caption {
+    color: var(--destructive);
   }
   .actions {
     margin-top: 24px;

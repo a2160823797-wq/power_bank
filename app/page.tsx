@@ -39,7 +39,6 @@ const t = {
   pleaseWait: '请稍候',
   clickToReplace: '点击更换',
   dropFirmware: '也可将 .bin 文件拖到这里',
-  transferProgress: '固件传输进度',
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
   startUpgrade: '一键升级',
   restartUpgrade: '再次升级',
@@ -55,10 +54,10 @@ const t = {
   stages: {
     idle: '等待固件',
     ready: '准备就绪',
-    connecting: '连接设备',
-    preparing: '进入升级模式',
-    writing: '传输固件',
-    verifying: '确认接收完成',
+    connecting: '正在连接设备',
+    preparing: '正在进入升级模式',
+    writing: '正在传输固件',
+    verifying: '正在确认接收完成',
     success: '升级完成',
     error: '升级失败',
   } satisfies Record<Stage, string>,
@@ -112,7 +111,7 @@ function Workspace() {
   const busy = running;
   const validationError = firmware ? validateFirmware(firmware.data) : null;
   const displayedError = error || validationError;
-  const showTransferProgress =
+  const showTransferStatus =
     ['writing', 'verifying'].includes(stage) ||
     (stage === 'error' && progress > 0);
 
@@ -400,17 +399,12 @@ function Workspace() {
               )}
             </span>
           </button>
-          {(busy || showTransferProgress || stage === 'success') && (
+          {(busy || showTransferStatus || stage === 'success') && (
             <div className="transfer-status" data-state={stage}>
-              <output className="sr-only" aria-live="polite">
+              <output className="transfer-caption" aria-live="polite">
                 {t.stages[stage]}
+                {stage === 'writing' && ` ${Math.round(progress)}%`}
               </output>
-              <progress
-                className="transfer-progress"
-                value={showTransferProgress || stage === 'success' ? progress : undefined}
-                max={100}
-                aria-label={t.transferProgress}
-              />
             </div>
           )}
           {displayedError && (
