@@ -31,11 +31,11 @@ type FirmwareInfo = { file: File; data: Uint8Array; crc: number };
 const t = {
   navigation: '功能导航',
   battery: '电池监测',
-  ntc: '数字电位器',
+  ntc: '温度模拟',
   upgrade: '固件升级',
   chooseFirmware: '选择固件',
   replaceFirmware: '更换固件',
-  readingFirmware: '正在读取固件…',
+  readingFirmware: '读取固件…',
   pleaseWait: '请稍候',
   clickToReplace: '点击更换',
   dropFirmware: '也可将 .bin 文件拖到这里',
@@ -46,7 +46,7 @@ const t = {
   statusToolTitle: '读取固件升级状态',
   statusToolDescription:
     '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
-  deviceConnecting: '正在握手',
+  deviceConnecting: '握手中',
   deviceConnected: '已连接',
   deviceDisconnected: '未连接',
   cancelToolTitle: '取消固件升级',

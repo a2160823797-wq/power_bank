@@ -69,7 +69,7 @@ export default function NtcSimulator() {
             controller.signal,
           );
           if (reply.status !== 0) {
-            throw new Error(`${cur_temperature}℃ 设置失败，请检查设备后重试`);
+            throw new Error(`${cur_temperature}℃ 设置失败，检查设备后重试`);
           }
         }
       } catch (reason) {
@@ -113,9 +113,9 @@ export default function NtcSimulator() {
   if (!connected) return null;
 
   return (
-    <section className="ntc-content" aria-label="数字电位器">
+    <section className="ntc-content" aria-label="温度模拟">
       {message && <output className="ntc-alert">{message}</output>}
-      <section className="ntc-panel ntc-setpoint">
+      <section className="ntc-panel">
         <div className="ntc-temperature">
           <input
             className="ntc-temperature-input"

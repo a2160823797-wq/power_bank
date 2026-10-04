@@ -22,12 +22,12 @@ const text = {
   noData: '暂无数据',
   receiving: (count: number, total: number | null) =>
     total === null
-      ? `已收到 ${count} 条，等待设备返回完整记录。`
-      : `已收到 ${count} 条，共 ${total} 条，等待传输完成。`,
+      ? `读取中，已收到 ${count} 条`
+      : `读取中 ${count}/${total}`,
   incomplete: (count: number, total: number | null) =>
     total === null
-      ? `已收到 ${count} 条。请重新连接设备以读取完整记录。`
-      : `已收到 ${count} 条，预期 ${total} 条。请重新连接设备以读取完整记录。`,
+      ? `记录不完整，已收到 ${count} 条，请重新连接`
+      : `记录不完整 ${count}/${total}，请重新连接`,
 };
 
 const beijingHistoryTime = new Intl.DateTimeFormat('zh-CN', {

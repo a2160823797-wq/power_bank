@@ -13,9 +13,9 @@ export function DeviceConnectionButton({ kind }: { kind: DeviceKind }) {
   } = useDeviceConnection();
   const buttonText = {
     disconnected: '选择设备',
-    connecting: '正在连接',
+    connecting: '连接中',
     connected: '断开连接',
-    disconnecting: '正在断开',
+    disconnecting: '断开中',
     'release-error': '重试断开',
   }[connection];
 

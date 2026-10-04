@@ -42,13 +42,6 @@
     vertical-align: baseline;
     letter-spacing: 0;
   }
-  .battery-panel {
-    min-width: 0;
-    padding: 20px;
-    border: 1px solid #303035;
-    border-radius: 14px;
-    background: #171719;
-  }
   .battery-panel-heading {
     display: flex;
     align-items: center;
@@ -143,7 +136,7 @@
   }
   .battery-history-description {
     margin-top: 12px;
-    color: var(--foreground);
+    color: var(--muted-foreground);
     font-size: 0.8125rem;
     line-height: 1.6;
   }
@@ -246,9 +239,6 @@
   }
   .battery-metrics {
     gap: 12px;
-  }
-  .battery-panel {
-    padding: 16px;
   }
   .battery-metric-value {
     font-size: 1.875rem;

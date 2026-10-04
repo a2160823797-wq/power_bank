@@ -12,7 +12,7 @@
   --primary: #0071e3;
   --primary-foreground: #ffffff;
   --secondary: #2c2c2e;
-  --muted: #242426;
+  --muted: #171719;
   --muted-foreground: #a1a1a6;
   --accent-foreground: #64a8ff;
   --destructive: #ff827b;
@@ -136,7 +136,7 @@
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: #141416;
+    background: var(--muted);
   }
   .topbar-controls {
     display: flex;
@@ -181,6 +181,15 @@
   .battery-content,
   .ntc-content {
     padding-top: 24px;
+  }
+  .battery-panel,
+  .ntc-panel,
+  .file-drop {
+    min-width: 0;
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--muted);
   }
   .device-button {
     display: inline-flex;
@@ -229,7 +238,8 @@
     opacity: 0.4;
   }
   .device-message,
-  .error-message {
+  .error-message,
+  .ntc-alert {
     margin-top: 14px;
     color: var(--destructive);
     font-size: 0.8125rem;
@@ -255,17 +265,13 @@
     width: 100%;
     min-height: 116px;
     align-items: center;
-    padding: 22px 20px;
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    background: var(--muted);
     text-align: left;
     transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
   }
   .file-drop:not(:disabled):hover,
   .file-drop.is-dragging {
-    border-color: #507aad;
-    background: #243047;
+    border-color: var(--ring);
+    background: var(--secondary);
   }
   .file-drop.is-dragging {
     box-shadow: 0 0 0 3px rgb(100 168 255 / 14%);
@@ -297,7 +303,7 @@
     overflow-wrap: anywhere;
   }
   .transfer-status {
-    margin-top: 26px;
+    margin-top: 24px;
   }
   .transfer-progress {
     display: block;
@@ -331,7 +337,7 @@
     background: var(--success);
   }
   .actions {
-    margin-top: 26px;
+    margin-top: 24px;
     text-align: center;
   }
   .primary-action {
@@ -420,8 +426,10 @@
   .updater-content {
     padding-block: 40px 48px;
   }
+  .battery-panel,
+  .ntc-panel,
   .file-drop {
-    padding: 20px 16px;
+    padding: 16px;
   }
 }
 
@@ -431,9 +439,6 @@
   }
   .updater-shell {
     padding-inline: 16px;
-  }
-  .file-drop {
-    padding: 18px 12px;
   }
   .file-title {
     font-size: 0.875rem;
