@@ -117,10 +117,20 @@ function Workspace() {
   const [logsExpanded, setLogsExpanded] = useState(false);
   const sessionRef = useRef<IapSerialSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const statusRef = useRef({ stage, progress, firmware, connected });
+  const statusRef = useRef({
+    stage,
+    progress,
+    firmware,
+    connected,
+  });
   useEffect(() => {
-    statusRef.current = { stage, progress, firmware, connected };
-  }, [stage, progress, firmware, connected]);
+    statusRef.current = {
+      stage,
+      progress,
+      firmware,
+      connected,
+    };
+  });
   const busy = running;
   const validationError = firmware ? validateFirmware(firmware.data) : null;
   const displayedError = error || validationError;
