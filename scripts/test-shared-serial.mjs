@@ -531,16 +531,9 @@ test('reader and writer locks belong to each channel and can be reacquired', asy
   reader.releaseLock();
 });
 
-function ntcFrame(command, temperatureOrNonce) {
-  const frame =
-    command === 0x82
-      ? Uint8Array.of(0xaa, 0x82, 0x4e, 0x54, 0x43, 0x31, 1, 0, 0, 0, 0, 0)
-      : Uint8Array.of(0xaa, 0x81, 0, 0, 0x10, 0x27, 0, 0, 102, 0, 0, 0);
-  new DataView(frame.buffer).setInt16(
-    command === 0x82 ? 8 : 2,
-    temperatureOrNonce,
-    true,
-  );
+function ntcFrame(temperature) {
+  const frame = Uint8Array.of(0xaa, 0x81, 0, 0, 0x10, 0x27, 0, 0, 102, 0, 0, 0);
+  new DataView(frame.buffer).setInt16(2, temperature, true);
   frame[11] = crc8(frame.subarray(0, 11));
   return frame;
 }
@@ -561,11 +554,6 @@ test('real battery and NTC sessions parse mixed RX and write independently over 
   port.onWrite = async (bytes) => {
     let reply;
     if (bytes[1] === 0xbb && bytes[2] === 8) reply = identityFrame();
-    if (bytes[1] === 2)
-      reply = ntcFrame(
-        0x82,
-        new DataView(bytes.buffer, bytes.byteOffset).getUint16(2, true),
-      );
     if (bytes[1] === 1) {
       const temperature = new DataView(bytes.buffer, bytes.byteOffset).getInt16(
         2,
@@ -574,7 +562,7 @@ test('real battery and NTC sessions parse mixed RX and write independently over 
       const telemetry = batteryFrame(0x02, Uint8Array.of(0, 25, 0));
       reply = Uint8Array.from([
         ...telemetry,
-        ...ntcFrame(0x81, temperature),
+        ...ntcFrame(temperature),
         ...identityFrame(),
       ]);
     }
@@ -593,12 +581,8 @@ test('real battery and NTC sessions parse mixed RX and write independently over 
   });
   const ntc = new NtcSerialSession(transport.createChannel());
   await Promise.all([battery.open(), ntc.open()]);
-  const [batteryIdentity, ntcIdentity] = await Promise.all([
-    battery.identify(1000),
-    ntc.identify(1000),
-  ]);
+  const batteryIdentity = await battery.identify(1000);
   assert.equal(batteryIdentity.model, 'SC2016');
-  assert.equal(ntcIdentity.major, 1);
   const result = await ntc.setTemperature(-20, 1000);
   assert.equal(result.temperature, -20);
   assert.equal(result.resistanceOhms, 10000);

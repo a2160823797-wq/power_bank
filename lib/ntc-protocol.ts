@@ -12,12 +12,6 @@ export interface NtcReply {
   receivedAt: number;
 }
 
-export interface NtcIdentity {
-  nonce: number;
-  major: number;
-  minor: number;
-}
-
 type Reader = NonNullable<SerialPortLike['readable']> extends {
   getReader(): infer T;
 } ? T : never;
@@ -29,13 +23,6 @@ export class NtcTimeoutError extends Error {
   constructor(temperature: number, timeoutMs: number) {
     super(`等待 ${temperature}℃ 回复超时（${timeoutMs} ms）`);
     this.name = 'NtcTimeoutError';
-  }
-}
-
-export class NtcIdentityTimeoutError extends Error {
-  constructor(timeoutMs: number) {
-    super(`设备未响应 NTC 识别请求（${timeoutMs} ms），请确认已烧录配套固件`);
-    this.name = 'NtcIdentityTimeoutError';
   }
 }
 
@@ -77,22 +64,9 @@ export function encodeSetTemperature(temperature: number) {
   return frame;
 }
 
-export function encodeIdentify(nonce: number) {
-  const frame = new Uint8Array(5);
-  frame.set([0xaa, 0x02]);
-  new DataView(frame.buffer).setUint16(2, nonce, true);
-  frame[4] = crc8(frame.subarray(0, 4));
-  return frame;
-}
-
 /** Each push accepts arbitrary serial chunks; only complete, valid replies are returned. */
 export class NtcFrameParser {
   private bytes: number[] = [];
-  private onIdentity: (identity: NtcIdentity) => void;
-
-  constructor(onIdentity: (identity: NtcIdentity) => void = () => {}) {
-    this.onIdentity = onIdentity;
-  }
 
   reset() {
     this.bytes.length = 0;
@@ -134,18 +108,8 @@ export class NtcFrameParser {
         continue;
       }
       this.bytes.splice(0, 12);
+      if (frame[1] === 0x82) continue; // 丢弃完整识别回复，避免帧内数据被误认成温度回复
       const view = new DataView(frame.buffer);
-      if (frame[1] === 0x82) {
-        if (
-          frame[2] !== 0x4e || frame[3] !== 0x54 ||
-          frame[4] !== 0x43 || frame[5] !== 0x31 ||
-          frame[6] !== 1 || frame[7] !== 0 || frame[10] !== 0
-        ) {
-          continue;
-        }
-        this.onIdentity({ nonce: view.getUint16(8, true), major: frame[6], minor: frame[7] });
-        continue;
-      }
       const reply: NtcReply = {
         temperature: view.getInt16(2, true),
         resistanceOhms: view.getUint32(4, true),
@@ -176,8 +140,8 @@ export class NtcFrameParser {
 }
 
 interface PendingReply {
-  matches: (reply: NtcReply | NtcIdentity) => boolean;
-  resolve: (reply: NtcReply | NtcIdentity) => void;
+  matches: (reply: NtcReply) => boolean;
+  resolve: (reply: NtcReply) => void;
   reject: (error: Error) => void;
 }
 
@@ -198,7 +162,7 @@ export class NtcSerialSession {
   constructor(port: SerialPortLike, onDisconnect?: (error: Error) => void) {
     this.port = port;
     this.onDisconnect = onDisconnect;
-    this.parser = new NtcFrameParser((identity) => this.receiveReply(identity));
+    this.parser = new NtcFrameParser();
   }
 
   get isOpen() {
@@ -267,7 +231,7 @@ export class NtcSerialSession {
     }
   }
 
-  private receiveReply(reply: NtcReply | NtcIdentity) {
+  private receiveReply(reply: NtcReply) {
     if (this.pending?.matches(reply)) {
       this.pending.resolve(reply);
     }
@@ -283,39 +247,28 @@ export class NtcSerialSession {
     const frame = encodeSetTemperature(temperature);
     return await this.request(
       frame,
-      (reply) => 'temperature' in reply && reply.temperature === temperature,
+      (reply) => reply.temperature === temperature,
       timeoutMs,
       () => new NtcTimeoutError(temperature, timeoutMs),
       signal,
-    ) as NtcReply;
-  }
-
-  async identify(timeoutMs: number, signal?: AbortSignal): Promise<NtcIdentity> {
-    const nonce = crypto.getRandomValues(new Uint16Array(1))[0];
-    return await this.request(
-      encodeIdentify(nonce),
-      (reply) => 'nonce' in reply && reply.nonce === nonce,
-      timeoutMs,
-      () => new NtcIdentityTimeoutError(timeoutMs),
-      signal,
-    ) as NtcIdentity;
+    );
   }
 
   private async request(
     frame: Uint8Array,
-    matches: (reply: NtcReply | NtcIdentity) => boolean,
+    matches: (reply: NtcReply) => boolean,
     timeoutMs: number,
     timeoutError: () => Error,
     signal?: AbortSignal,
-  ): Promise<NtcReply | NtcIdentity> {
+  ): Promise<NtcReply> {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 0x7fffffff) {
       throw new RangeError('回复超时必须大于 0 ms');
     }
     if (signal?.aborted) throw abortError();
     if (this.state !== 'open' || !this.port.writable) throw new Error('串口未连接');
     if (this.pending || this.writeTask) throw new Error('上一条温度命令尚未结束');
-    const response = new Promise<NtcReply | NtcIdentity>((resolve, reject) => {
-      const finish = (reply?: NtcReply | NtcIdentity, error?: Error) => {
+    const response = new Promise<NtcReply>((resolve, reject) => {
+      const finish = (reply?: NtcReply, error?: Error) => {
         if (this.pending !== pending) return;
         this.pending = null;
         globalThis.clearTimeout(timer);

@@ -230,7 +230,7 @@ test('scanning and selected verification reuse the physical monitoring connectio
   });
   t.after(() => session.close());
   await session.open();
-  await session.identify('battery', 100);
+  await session.identify(100);
   assert.equal(await discoverUpgradePort([port], port, session), port);
   await verifyUpgradePort(port, session);
   assert.equal(port.openCount, 1);
@@ -443,7 +443,7 @@ test('provider grants an exclusive logical channel for the current monitoring po
   const session = new DeviceSerialSession(port);
   t.after(() => session.close());
   await session.open();
-  await session.identify('battery', 100);
+  await session.identify(100);
   const { upgrade, state } = createUpgradeProvider([port], { session });
   await upgrade(async (channel) => {
     assert.notEqual(channel, port);

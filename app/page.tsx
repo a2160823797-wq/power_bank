@@ -85,7 +85,7 @@ function Workspace() {
               {t.upgrade}
             </button>
           </nav>
-          {view === 'battery' && <DeviceConnectionButton kind="battery" />}
+          {view === 'battery' && <DeviceConnectionButton />}
         </div>
       </header>
       {view === 'battery' && <DeviceConnectionBar />}

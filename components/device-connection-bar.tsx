@@ -1,8 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
-import type { DeviceKind } from '@/lib/device-session';
 
-export function DeviceConnectionButton({ kind }: { kind: DeviceKind }) {
+export function DeviceConnectionButton() {
   const {
     serialSupported,
     connection,
@@ -28,7 +27,7 @@ export function DeviceConnectionButton({ kind }: { kind: DeviceKind }) {
         void (
           connected || connection === 'release-error'
             ? disconnect()
-            : connect(kind)
+            : connect()
         ).catch(() => undefined);
       }}
     >

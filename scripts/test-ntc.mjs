@@ -10,11 +10,9 @@ const source = stripTypeScriptTypes(
 const {
   crc8,
   encodeSetTemperature,
-  encodeIdentify,
   NtcFrameParser,
   NtcSerialSession,
   NtcTimeoutError,
-  NtcIdentityTimeoutError,
 } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 
 const savedDeviceSource = stripTypeScriptTypes(
@@ -37,7 +35,7 @@ function replyFrame(temperature, resistanceOhms = 10000, code = 102, status = 0)
   return frame;
 }
 
-function identityFrame(nonce) {
+function legacyIdentityFrame(nonce) {
   const frame = Uint8Array.from([0xaa, 0x82, 0x4e, 0x54, 0x43, 0x31, 1, 0, nonce & 0xff, nonce >> 8, 0, 0]);
   frame[11] = crc8(frame.subarray(0, 11));
   return frame;
@@ -445,12 +443,12 @@ const automaticSerial = (ports) => ({
 test('a remembered device reconnects using only its uniquely matching authorized port', async (t) => {
   savedDeviceStorage(t);
   const port = rememberedPort({ usbVendorId: 0x10c4, usbProductId: 0xea60 });
-  rememberSerialPort('ntc', port);
+  rememberSerialPort('monitor', port);
   const serial = automaticSerial([
     rememberedPort({ usbVendorId: 0x1a86, usbProductId: 0x7523 }),
     port,
   ]);
-  assert.equal(await getSavedSerialPort(serial, 'ntc'), port);
+  assert.equal(await getSavedSerialPort(serial, 'monitor'), port);
 });
 
 test('unseen or damaged device records do not enumerate or request ports', async (t) => {
@@ -459,23 +457,23 @@ test('unseen or damaged device records do not enumerate or request ports', async
   serial.getPorts = async () =>
     assert.fail('no saved device must not enumerate ports');
   for (const value of [undefined, '', '{broken', 'null', '25']) {
-    if (value === undefined) data.delete('ntc');
-    else data.set('ntc', value);
-    assert.equal(await getSavedSerialPort(serial, 'ntc'), null);
+    if (value === undefined) data.delete('monitor');
+    else data.set('monitor', value);
+    assert.equal(await getSavedSerialPort(serial, 'monitor'), null);
   }
 });
 
 test('a missing or no-longer-authorized device stays disconnected without a picker', async (t) => {
   savedDeviceStorage(t);
   rememberSerialPort(
-    'ntc',
+    'monitor',
     rememberedPort({ usbVendorId: 1, usbProductId: 2 }),
   );
-  assert.equal(await getSavedSerialPort(automaticSerial([]), 'ntc'), null);
+  assert.equal(await getSavedSerialPort(automaticSerial([]), 'monitor'), null);
   assert.equal(
     await getSavedSerialPort(
       automaticSerial([rememberedPort({ usbVendorId: 1, usbProductId: 3 })]),
-      'ntc',
+      'monitor',
     ),
     null,
   );
@@ -484,29 +482,29 @@ test('a missing or no-longer-authorized device stays disconnected without a pick
 test('two identical authorized adapters cannot select an arbitrary device', async (t) => {
   savedDeviceStorage(t);
   const info = { usbVendorId: 1, usbProductId: 2 };
-  rememberSerialPort('ntc', rememberedPort(info));
+  rememberSerialPort('monitor', rememberedPort(info));
   assert.equal(
     await getSavedSerialPort(
       automaticSerial([rememberedPort(info), rememberedPort(info)]),
-      'ntc',
+      'monitor',
     ),
     null,
   );
 });
 
-test('battery and NTC device records remain independent, including Bluetooth identities', async (t) => {
+test('monitor and upgrade device records remain independent, including Bluetooth identities', async (t) => {
   savedDeviceStorage(t);
-  const battery = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
-  const ntc = rememberedPort({ bluetoothServiceClassId: 'ntc-device' });
-  rememberSerialPort('battery', battery);
-  rememberSerialPort('ntc', ntc);
+  const monitor = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
+  const upgrade = rememberedPort({ bluetoothServiceClassId: 'upgrade-device' });
+  rememberSerialPort('monitor', monitor);
+  rememberSerialPort('upgrade', upgrade);
   const serial = automaticSerial([
-    battery,
+    monitor,
     rememberedPort({ bluetoothServiceClassId: 'other-device' }),
-    ntc,
+    upgrade,
   ]);
-  assert.equal(await getSavedSerialPort(serial, 'battery'), battery);
-  assert.equal(await getSavedSerialPort(serial, 'ntc'), ntc);
+  assert.equal(await getSavedSerialPort(serial, 'monitor'), monitor);
+  assert.equal(await getSavedSerialPort(serial, 'upgrade'), upgrade);
 });
 
 test('blocked local storage preserves manual connection and suppresses automatic selection', async (t) => {
@@ -518,90 +516,15 @@ test('blocked local storage preserves manual connection and suppresses automatic
     throw new Error('storage disabled');
   };
   const port = rememberedPort({ usbVendorId: 1, usbProductId: 2 });
-  assert.doesNotThrow(() => rememberSerialPort('ntc', port));
-  assert.equal(await getSavedSerialPort(automaticSerial([port]), 'ntc'), null);
+  assert.doesNotThrow(() => rememberSerialPort('monitor', port));
+  assert.equal(await getSavedSerialPort(automaticSerial([port]), 'monitor'), null);
 });
 
-test('identity query uses a separate command with a little-endian challenge and CRC', () => {
-  const frame = encodeIdentify(0x91ab);
-  assert.deepEqual([...frame.subarray(0, 4)], [0xaa, 2, 0xab, 0x91]);
-  assert.equal(frame[4], crc8(frame.subarray(0, 4)));
-});
-
-test('identity parser preserves every split boundary and keeps temperature replies separate', () => {
-  const frame = identityFrame(0x91ab);
+test('parser skips legacy identity replies at every split boundary and keeps temperature replies separate', () => {
+  const frame = legacyIdentityFrame(0x91ab);
   for (let split = 1; split < frame.length; split += 1) {
-    const identities = [];
-    const parser = new NtcFrameParser((reply) => identities.push(reply));
+    const parser = new NtcFrameParser();
     assert.deepEqual(parser.push(frame.subarray(0, split)), []);
-    assert.equal(identities.length, 0);
     assert.equal(parser.push(Uint8Array.from([...frame.subarray(split), ...replyFrame(25)]))[0].temperature, 25);
-    assert.deepEqual(identities, [{ nonce: 0x91ab, major: 1, minor: 0 }]);
   }
-});
-
-test('identity rejects bad CRC, signature, version and status, and ignores battery/IAP payloads', () => {
-  const identities = [];
-  const parser = new NtcFrameParser((reply) => identities.push(reply));
-  const corrupt = identityFrame(1);
-  corrupt[11] ^= 1;
-  parser.push(corrupt);
-  for (const offset of [2, 3, 4, 5, 6, 7, 10]) {
-    const frame = identityFrame(1);
-    frame[offset] ^= 1;
-    frame[11] = crc8(frame.subarray(0, 11));
-    parser.push(frame);
-  }
-  for (const channel of [0xbb, 0x55]) parser.push(outerFrame(channel, identityFrame(1)));
-  assert.equal(identities.length, 0);
-  parser.push(identityFrame(2));
-  assert.equal(identities[0].nonce, 2);
-});
-
-test('identification accepts only its challenge and never transmits a temperature setting', async () => {
-  const port = new MockPort((bytes, device) => {
-    assert.equal(bytes[1], 2);
-    const nonce = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(2, true);
-    device.push(replyFrame(25));
-    device.push(identityFrame(nonce ^ 1));
-    const frame = identityFrame(nonce);
-    device.push(frame.subarray(0, 3));
-    device.push(frame.subarray(3));
-  });
-  const { session } = makeSession(port);
-  await session.open();
-  const identity = await session.identify(100);
-  assert.equal(identity.major, 1);
-  assert.equal(port.writes.length, 1);
-  await session.close();
-});
-
-test('normal temperature feedback and wrong identity responses cannot identify a device', async () => {
-  const port = new MockPort((bytes, device) => {
-    const nonce = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(2, true);
-    device.push(replyFrame(25));
-    const frame = identityFrame(nonce);
-    frame[11] ^= 1;
-    device.push(frame);
-    device.push(identityFrame(nonce ^ 1));
-  });
-  const { session } = makeSession(port);
-  await session.open();
-  await assert.rejects(session.identify(10), NtcIdentityTimeoutError);
-  await session.close();
-});
-
-test('identification shares command ownership and supports immediate cancellation', async () => {
-  const port = new MockPort();
-  const { session } = makeSession(port);
-  await session.open();
-  const controller = new AbortController();
-  const pending = assert.rejects(session.identify(60000, controller.signal), { name: 'AbortError' });
-  await assert.rejects(session.setTemperature(25, 100), /尚未结束/);
-  controller.abort();
-  await pending;
-  const writes = port.writes.length;
-  await assert.rejects(session.identify(100, controller.signal), { name: 'AbortError' });
-  assert.equal(port.writes.length, writes);
-  await session.close();
 });

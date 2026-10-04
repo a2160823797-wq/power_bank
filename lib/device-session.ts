@@ -3,8 +3,6 @@ import { BatterySerialSession, type BatteryState } from './battery-protocol';
 import { NtcSerialSession } from './ntc-protocol';
 import { SharedSerialTransport } from './shared-serial';
 
-export type DeviceKind = 'battery' | 'ntc';
-
 export interface DeviceCallbacks {
   onData?(session: DeviceSerialSession, state: BatteryState): void;
   onError?(session: DeviceSerialSession, message: string): void;
@@ -122,11 +120,9 @@ export class DeviceSerialSession {
     this.callbacks.onDisconnect?.(this, error);
   }
 
-  identify(kind: DeviceKind, timeoutMs: number, signal?: AbortSignal) {
+  identify(timeoutMs: number, signal?: AbortSignal) {
     if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
-    return kind === 'battery'
-      ? this.battery!.identify(timeoutMs, signal)
-      : this.ntc!.identify(timeoutMs, signal);
+    return this.battery!.identify(timeoutMs, signal);
   }
 
   async identifyUpgrade(timeoutMs = 500) {
@@ -207,7 +203,7 @@ export class DeviceSerialSession {
         if (this.state !== 'upgrading' || !this.transport.isOpen)
           throw new Error('设备已断开连接');
         this.state = 'open';
-        await this.identify('battery', 500);
+        await this.identify(500);
         await this.requestHistory();
       } else {
         throw new Error('设备已断开连接');

@@ -27,7 +27,7 @@ async function moduleUrl(name) {
   return url;
 }
 const { batteryFrame } = await import(await moduleUrl('battery-protocol'));
-const { crc8, NtcTimeoutError, NtcIdentityTimeoutError } = await import(
+const { crc8, NtcTimeoutError } = await import(
   await moduleUrl('ntc-protocol')
 );
 const {
@@ -37,7 +37,6 @@ const {
   crc32,
 } = await import(await moduleUrl('iap-protocol'));
 const { DEFAULT_CONFIG } = await import(await moduleUrl('iap-config'));
-const { DeviceSerialSession } = await import(await moduleUrl('device-session'));
 const {
   discoverDevice,
   connectSelectedDevice,
@@ -59,25 +58,6 @@ function batteryIdentity(model = 'SC2016', code = 'BATTERY-001') {
   );
 }
 
-function ntcIdentity(request) {
-  const frame = Uint8Array.from([
-    0xaa,
-    0x82,
-    0x4e,
-    0x54,
-    0x43,
-    0x31,
-    1,
-    0,
-    request[2],
-    request[3],
-    0,
-    0,
-  ]);
-  frame[11] = crc8(frame.subarray(0, 11));
-  return frame;
-}
-
 function temperatureAck(temperature = 25) {
   const frame = new Uint8Array(12);
   frame.set([0xaa, 0x81]);
@@ -97,7 +77,6 @@ function deviceReply(request) {
       return batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13]));
     return null;
   }
-  if (request[1] === 0x02) return ntcIdentity(request);
   if (request[1] === 0x01)
     return temperatureAck(
       new DataView(request.buffer, request.byteOffset).getInt16(2, true),
@@ -182,25 +161,17 @@ class MockPort {
 }
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
-function assertReadOnly(kind, ...ports) {
+function assertReadOnly(...ports) {
   for (const port of ports) {
-    for (const frame of port.writes) {
-      if (kind === 'battery' || frame[1] === 0xbb)
-        assert.deepEqual(frame, batteryFrame(0x08));
-      else {
-        assert.equal(frame.length, 5);
-        assert.deepEqual([...frame.subarray(0, 2)], [0xaa, 0x02]);
-        assert.equal(frame[4], crc8(frame.subarray(0, 4)));
-      }
-    }
+    for (const frame of port.writes)
+      assert.deepEqual(frame, batteryFrame(0x08));
   }
 }
 
-test('one physical connection supports both identities and temperature settings', async () => {
+test('one physical connection supports battery identity and temperature settings', async () => {
   const port = new MockPort();
-  const { session } = await connectSelectedDevice(port, 'battery');
+  const { session } = await connectSelectedDevice(port);
   assert.equal(session.isOpen, true);
-  await session.identify('ntc', 100);
   const reply = await session.setTemperature(-20, 100);
   assert.equal(reply.temperature, -20);
   assert.equal(port.openCount, 1);
@@ -209,68 +180,64 @@ test('one physical connection supports both identities and temperature settings'
   assert.equal(port.closeCount, 1);
 });
 
-for (const kind of ['battery', 'ntc']) {
-  for (const remembered of [false, true]) {
-    test(`${kind} ${remembered ? 'remembered reconnection' : 'selected connection'} preserves handshake identity and reads only history`, async (t) => {
-      let acceptedSession;
-      let displayed;
-      const port = new MockPort((request) =>
-        request[1] === 0xbb && request[2] === 0x0a
-          ? [
-              batteryFrame(0x0a, Uint8Array.from([0, 0, 0])),
-              batteryFrame(0x0a, Uint8Array.from([2, 0, 0])),
-            ]
-          : deviceReply(request),
-      );
-      const callbacks = {
-        onData: (candidate, state) => {
-          if (candidate === acceptedSession) displayed = state;
-        },
-      };
-      const { session } = remembered
-        ? await discoverDevice([port], port, kind, undefined, callbacks)
-        : await connectSelectedDevice(port, kind, undefined, callbacks);
-      t.after(() => session.close());
-      assert.equal(
-        displayed,
-        undefined,
-        'candidate handshake data is hidden before accepting the device',
-      );
-      acceptedSession = session;
-      await session.requestHistory();
-      await tick();
-      assert.equal(displayed.batteryModel, 'SC2016');
-      assert.equal(displayed.batteryCode, 'BATTERY-001');
-      assert.equal(displayed.historyStatus, 'complete');
-      assert.equal(displayed.totalVoltageMv, null);
-      assert.deepEqual(
-        port.writes.filter((bytes) => bytes[1] === 0xbb),
-        [batteryFrame(0x08), batteryFrame(0x0a)],
-      );
-      if (kind === 'ntc')
-        assert.deepEqual([...port.writes[0].subarray(0, 2)], [0xaa, 0x02]);
-      assert.equal(port.writes.length, kind === 'ntc' ? 3 : 2);
-      port.controller.enqueue(
-        Uint8Array.from([
-          ...batteryFrame(0x02, Uint8Array.from([0, 25, 0])),
-          ...batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])),
-          ...batteryFrame(0x02, Uint8Array.from([0x12, 1, 0x88, 0x13])),
-        ]),
-      );
-      await tick();
-      assert.equal(displayed.temperatureC, 25);
-      assert.equal(displayed.totalVoltageMv, 5000);
-      assert.equal(displayed.cellCount, 1);
-      assert.deepEqual(displayed.cellVoltagesMv, [5000]);
-      assert.equal(displayed.batteryModel, 'SC2016');
-      assert.equal(displayed.batteryCode, 'BATTERY-001');
-      assert.equal(
-        port.writes.length,
-        kind === 'ntc' ? 3 : 2,
-        'telemetry does not trigger additional queries',
-      );
-    });
-  }
+for (const remembered of [false, true]) {
+  test(`battery ${remembered ? 'remembered reconnection' : 'selected connection'} preserves handshake identity and reads only history`, async (t) => {
+    let acceptedSession;
+    let displayed;
+    const port = new MockPort((request) =>
+      request[1] === 0xbb && request[2] === 0x0a
+        ? [
+            batteryFrame(0x0a, Uint8Array.from([0, 0, 0])),
+            batteryFrame(0x0a, Uint8Array.from([2, 0, 0])),
+          ]
+        : deviceReply(request),
+    );
+    const callbacks = {
+      onData: (candidate, state) => {
+        if (candidate === acceptedSession) displayed = state;
+      },
+    };
+    const { session } = remembered
+      ? await discoverDevice([port], port, undefined, callbacks)
+      : await connectSelectedDevice(port, undefined, callbacks);
+    t.after(() => session.close());
+    assert.equal(
+      displayed,
+      undefined,
+      'candidate handshake data is hidden before accepting the device',
+    );
+    acceptedSession = session;
+    await session.requestHistory();
+    await tick();
+    assert.equal(displayed.batteryModel, 'SC2016');
+    assert.equal(displayed.batteryCode, 'BATTERY-001');
+    assert.equal(displayed.historyStatus, 'complete');
+    assert.equal(displayed.totalVoltageMv, null);
+    assert.deepEqual(
+      port.writes.filter((bytes) => bytes[1] === 0xbb),
+      [batteryFrame(0x08), batteryFrame(0x0a)],
+    );
+    assert.equal(port.writes.length, 2);
+    port.controller.enqueue(
+      Uint8Array.from([
+        ...batteryFrame(0x02, Uint8Array.from([0, 25, 0])),
+        ...batteryFrame(0x02, Uint8Array.from([1, 0x88, 0x13])),
+        ...batteryFrame(0x02, Uint8Array.from([0x12, 1, 0x88, 0x13])),
+      ]),
+    );
+    await tick();
+    assert.equal(displayed.temperatureC, 25);
+    assert.equal(displayed.totalVoltageMv, 5000);
+    assert.equal(displayed.cellCount, 1);
+    assert.deepEqual(displayed.cellVoltagesMv, [5000]);
+    assert.equal(displayed.batteryModel, 'SC2016');
+    assert.equal(displayed.batteryCode, 'BATTERY-001');
+    assert.equal(
+      port.writes.length,
+      2,
+      'telemetry does not trigger additional queries',
+    );
+  });
 }
 
 test('battery updates and NTC ACKs can be fragmented and glued on the same reader', async () => {
@@ -290,7 +257,7 @@ test('battery updates and NTC ACKs can be fragmented and glued on the same reade
       mixed.slice(20),
     ];
   });
-  const { session } = await connectSelectedDevice(port, 'ntc', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onData: (_session, state) => received.push(state),
   });
   const [reply] = await Promise.all([
@@ -310,7 +277,7 @@ test('an NTC ACK nested in a battery payload cannot complete a temperature reque
       ? batteryFrame(0x40, temperatureAck(25))
       : deviceReply(request),
   );
-  const { session } = await connectSelectedDevice(port, 'ntc');
+  const { session } = await connectSelectedDevice(port);
   await assert.rejects(session.setTemperature(25, 30), NtcTimeoutError);
   await session.close();
 });
@@ -322,129 +289,109 @@ test('invalid CRC on temperature ACK does not succeed and does not close the sha
     reply[11] ^= 1;
     return reply;
   });
-  const { session } = await connectSelectedDevice(port, 'battery');
+  const { session } = await connectSelectedDevice(port);
   await assert.rejects(session.setTemperature(25, 30), NtcTimeoutError);
   assert.equal(session.isOpen, true);
   assert.equal(port.closeCount, 0);
-  await session.identify('battery', 100);
+  await session.identify(100);
   await session.close();
 });
 
-for (const kind of ['battery', 'ntc']) {
-  test(`${kind} scanning skips unsupported and occupied ports and rechecks a unique candidate`, async () => {
-    const unknown = new MockPort(() => null);
-    const occupied = new MockPort();
-    occupied.openError = new Error('端口已被其他程序占用');
-    const target = new MockPort();
-    const result = await discoverDevice(
-      [unknown, occupied, target],
-      null,
-      kind,
-    );
-    assert.equal(result.port, target);
-    assert.equal(unknown.opened, false);
-    assert.equal(occupied.closeCount, 0);
-    assert.equal(target.openCount, 2);
-    assert.equal(target.closeCount, 1);
-    assertReadOnly(kind, unknown, occupied, target);
-    await result.session.close();
-  });
+test('battery scanning skips unsupported and occupied ports and rechecks a unique candidate', async () => {
+  const unknown = new MockPort(() => null);
+  const occupied = new MockPort();
+  occupied.openError = new Error('端口已被其他程序占用');
+  const target = new MockPort();
+  const result = await discoverDevice([unknown, occupied, target], null);
+  assert.equal(result.port, target);
+  assert.equal(unknown.opened, false);
+  assert.equal(occupied.closeCount, 0);
+  assert.equal(target.openCount, 2);
+  assert.equal(target.closeCount, 1);
+  assertReadOnly(unknown, occupied, target);
+  await result.session.close();
+});
 
-  test(`${kind} remembered authorized device is used without touching another candidate`, async () => {
-    const other = new MockPort();
-    const saved = new MockPort();
-    const result = await discoverDevice([other, saved], saved, kind);
-    assert.equal(result.port, saved);
-    assert.equal(saved.openCount, 1);
-    assert.equal(other.openCount, 0);
-    assertReadOnly(kind, saved);
-    await result.session.close();
-  });
+test('battery remembered authorized device is used without touching another candidate', async () => {
+  const other = new MockPort();
+  const saved = new MockPort();
+  const result = await discoverDevice([other, saved], saved);
+  assert.equal(result.port, saved);
+  assert.equal(saved.openCount, 1);
+  assert.equal(other.openCount, 0);
+  assertReadOnly(saved);
+  await result.session.close();
+});
 
-  test(`${kind} multiple matches are closed and require explicit device selection`, async () => {
-    const first = new MockPort();
-    const second = new MockPort();
-    await assert.rejects(
-      discoverDevice([first, second], null, kind),
-      DeviceSelectionError,
-    );
-    assert.equal(first.opened, false);
-    assert.equal(second.opened, false);
-    assertReadOnly(kind, first, second);
-  });
+test('battery multiple matches are closed and require explicit device selection', async () => {
+  const first = new MockPort();
+  const second = new MockPort();
+  await assert.rejects(
+    discoverDevice([first, second], null),
+    DeviceSelectionError,
+  );
+  assert.equal(first.opened, false);
+  assert.equal(second.opened, false);
+  assertReadOnly(first, second);
+});
 
-  test(`${kind} probe canceled while opening releases the physical port before rejecting`, async () => {
-    const controller = new AbortController();
-    const port = new MockPort();
-    port.beforeOpen = async () => controller.abort();
-    await assert.rejects(connectSelectedDevice(port, kind, controller.signal), {
-      name: 'AbortError',
-    });
-    assert.equal(port.opened, false);
-    assert.equal(port.closeCount, 1);
-    assert.equal(port.writes.length, 0);
+test('battery probe canceled while opening releases the physical port before rejecting', async () => {
+  const controller = new AbortController();
+  const port = new MockPort();
+  port.beforeOpen = async () => controller.abort();
+  await assert.rejects(connectSelectedDevice(port, controller.signal), {
+    name: 'AbortError',
   });
+  assert.equal(port.opened, false);
+  assert.equal(port.closeCount, 1);
+  assert.equal(port.writes.length, 0);
+});
 
-  test(`${kind} unique candidate is rejected if it no longer identifies after reopening`, async () => {
-    const port = new MockPort((request, current) =>
-      current.openCount === 1 ? deviceReply(request) : null,
-    );
-    assert.equal(await discoverDevice([port], null, kind), null);
-    assert.equal(port.openCount, 2);
-    assert.equal(port.closeCount, 2);
-    assert.equal(port.opened, false);
-    assertReadOnly(kind, port);
-  });
+test('battery unique candidate is rejected if it no longer identifies after reopening', async () => {
+  const port = new MockPort((request, current) =>
+    current.openCount === 1 ? deviceReply(request) : null,
+  );
+  assert.equal(await discoverDevice([port], null), null);
+  assert.equal(port.openCount, 2);
+  assert.equal(port.closeCount, 2);
+  assert.equal(port.opened, false);
+  assertReadOnly(port);
+});
 
-  test(`${kind} probe canceled while waiting for identity releases the port`, async () => {
-    const controller = new AbortController();
-    const port = new MockPort(() => {
-      controller.abort();
-      return null;
-    });
-    await assert.rejects(connectSelectedDevice(port, kind, controller.signal), {
-      name: 'AbortError',
-    });
-    assert.equal(port.closeCount, 1);
-    assert.equal(port.opened, false);
+test('battery probe canceled while waiting for identity releases the port', async () => {
+  const controller = new AbortController();
+  const port = new MockPort(() => {
+    controller.abort();
+    return null;
   });
+  await assert.rejects(connectSelectedDevice(port, controller.signal), {
+    name: 'AbortError',
+  });
+  assert.equal(port.closeCount, 1);
+  assert.equal(port.opened, false);
+});
 
-  test(`${kind} identity immediately followed by EOF is never accepted`, async () => {
-    const port = new MockPort((request, current) => {
-      current.controller.enqueue(deviceReply(request));
-      current.controller.close();
-      return null;
-    });
-    await assert.rejects(connectSelectedDevice(port, kind));
-    assert.equal(port.opened, false);
+test('battery identity immediately followed by EOF is never accepted', async () => {
+  const port = new MockPort((request, current) => {
+    current.controller.enqueue(deviceReply(request));
+    current.controller.close();
+    return null;
   });
-}
+  await assert.rejects(connectSelectedDevice(port));
+  assert.equal(port.opened, false);
+});
 
 test('ports outside the authorized list are never probed', async () => {
   const port = new MockPort();
-  assert.equal(await discoverDevice([], port, 'battery'), null);
+  assert.equal(await discoverDevice([], port), null);
   assert.equal(port.openCount, 0);
-});
-
-test('NTC identity must match the fresh query nonce', async () => {
-  const port = new MockPort((request) => {
-    const reply = ntcIdentity(request);
-    reply[8] ^= 1;
-    reply[11] = crc8(reply.subarray(0, 11));
-    return reply;
-  });
-  const session = new DeviceSerialSession(port);
-  await session.open();
-  await assert.rejects(session.identify('ntc', 30), NtcIdentityTimeoutError);
-  assertReadOnly('ntc', port);
-  await session.close();
 });
 
 test('close failure during scan retains the session and supports a later release retry', async () => {
   const port = new MockPort();
   port.closeFailures = 1;
   let failure;
-  await assert.rejects(discoverDevice([port], null, 'battery'), (error) => {
+  await assert.rejects(discoverDevice([port], null), (error) => {
     failure = error;
     return error instanceof DevicePortReleaseError;
   });
@@ -464,7 +411,7 @@ test('physical disconnect rejects pending temperature request and notifies once 
     }
     return deviceReply(request);
   });
-  const { session } = await connectSelectedDevice(port, 'battery', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onDisconnect: () => {
       disconnected += 1;
     },
@@ -484,7 +431,7 @@ test('upgrade owns one exclusive logical channel and resumes both protocols with
       ? Uint8Array.from([0x06, 0x18, 0x43])
       : deviceReply(request),
   );
-  const { session } = await connectSelectedDevice(port, 'battery', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onData: (_session, state) => received.push(state),
   });
   const result = await session.withUpgrade(async (channel) => {
@@ -528,7 +475,7 @@ test('upgrade owns one exclusive logical channel and resumes both protocols with
 
 test('upgrade failure preserves its cause and restores monitoring on the same open port', async () => {
   const port = new MockPort();
-  const { session } = await connectSelectedDevice(port, 'ntc');
+  const { session } = await connectSelectedDevice(port);
   const failure = new Error('升级被取消');
   await assert.rejects(
     session.withUpgrade(async (channel) => {
@@ -636,7 +583,7 @@ test('universal IAP transfers non-Cortex firmware in 1024-byte YMODEM packets on
     phase = 'done';
     return Uint8Array.of(0x06);
   });
-  const { session } = await connectSelectedDevice(port, 'battery', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onData: (_session, state) => received.push(state),
   });
   t.after(() => session.close());
@@ -739,7 +686,7 @@ test('canceling universal IAP during YMODEM restores monitoring without reopenin
     }
     return deviceReply(packet);
   });
-  const { session } = await connectSelectedDevice(port, 'battery');
+  const { session } = await connectSelectedDevice(port);
   t.after(() => session.close());
   await assert.rejects(
     session.withUpgrade(async (channel) => {
@@ -792,7 +739,7 @@ test('entering upgrade cancels a pending temperature ACK before giving IAP its c
   const port = new MockPort((request) =>
     request[1] === 0x01 ? null : deviceReply(request),
   );
-  const { session } = await connectSelectedDevice(port, 'battery');
+  const { session } = await connectSelectedDevice(port);
   const temperatureResult = session
     .setTemperature(25, 1000)
     .catch((error) => error);
@@ -808,7 +755,7 @@ test('entering upgrade cancels a pending temperature ACK before giving IAP its c
 
 test('disconnecting during upgrade closes the physical port and never resumes monitoring', async () => {
   const port = new MockPort();
-  const { session } = await connectSelectedDevice(port, 'battery');
+  const { session } = await connectSelectedDevice(port);
   await assert.rejects(
     session.withUpgrade(async (channel) => {
       await channel.open({ baudRate: 1500000 });
@@ -828,7 +775,7 @@ test('disconnecting during upgrade closes the physical port and never resumes mo
 test('physical failure during upgrade preserves the operation error and cannot resume stale channels', async () => {
   let disconnected = 0;
   const port = new MockPort();
-  const { session } = await connectSelectedDevice(port, 'battery', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onDisconnect: () => {
       disconnected += 1;
     },
@@ -946,7 +893,7 @@ test('universal IAP accepts fragmented command and YMODEM acknowledgements on th
     upgradeMode = false;
     return fragments([0x06]);
   });
-  const { session } = await connectSelectedDevice(port, 'battery', undefined, {
+  const { session } = await connectSelectedDevice(port, undefined, {
     onData: (_session, state) => received.push(state),
   });
   const progress = [];

@@ -13,9 +13,9 @@ import {
   BatteryIdentityTimeoutError,
   type BatteryState,
 } from './battery-protocol';
-import { NtcIdentityTimeoutError, type NtcReply } from './ntc-protocol';
+import type { NtcReply } from './ntc-protocol';
 import type { IapSerialSession, SerialApi, SerialPortLike } from './iap-protocol';
-import { DeviceSerialSession, type DeviceKind } from './device-session';
+import { DeviceSerialSession } from './device-session';
 import {
   connectSelectedDevice,
   discoverDevice,
@@ -42,7 +42,7 @@ interface DeviceConnection {
   connected: boolean;
   error: string;
   battery: BatteryState;
-  connect: (kind: DeviceKind, automatic?: boolean) => Promise<void>;
+  connect: (automatic?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   setTemperature: (
     temperature: number,
@@ -55,7 +55,6 @@ interface DeviceConnection {
 }
 
 const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
-const LAST_KIND_KEY = 'powerbank.device-kind';
 const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-serial-port';
 const DeviceContext = createContext<DeviceConnection | null>(null);
 const messageOf = (reason: unknown) =>
@@ -65,14 +64,6 @@ function markHistoryIncomplete(cur_state: BatteryState): BatteryState {
   return cur_state.historyStatus === 'receiving'
     ? { ...cur_state, historyStatus: 'incomplete' }
     : cur_state;
-}
-
-function automaticKind(): DeviceKind {
-  try {
-    const saved = localStorage.getItem(LAST_KIND_KEY);
-    if (saved === 'battery' || saved === 'ntc') return saved;
-  } catch {}
-  return 'battery';
 }
 
 export function DeviceConnectionProvider({
@@ -154,7 +145,7 @@ export function DeviceConnectionProvider({
     return () => globalThis.clearTimeout(report_timer);
   }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
 
-  async function connect(kind: DeviceKind, automatic = false) {
+  async function connect(automatic = false) {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
@@ -192,7 +183,6 @@ export function DeviceConnectionProvider({
           const selectedPort = await serial.requestPort();
           result = await connectSelectedDevice(
             selectedPort,
-            kind,
             controller.signal,
             callbacks,
           );
@@ -200,7 +190,6 @@ export function DeviceConnectionProvider({
           result = await discoverDevice(
             ports,
             preferred,
-            kind,
             controller.signal,
             callbacks,
           );
@@ -220,9 +209,6 @@ export function DeviceConnectionProvider({
         if (!session.isOpen) throw new Error('设备已断开连接');
         setConnection('connected');
         rememberSerialPort(LAST_PORT_KEY, result.port);
-        try {
-          localStorage.setItem(LAST_KIND_KEY, kind);
-        } catch {}
         await session.requestHistory();
       } catch (reason) {
         let releaseFailed = false;
@@ -242,10 +228,7 @@ export function DeviceConnectionProvider({
         if (mountedRef.current) {
           if (reason instanceof DeviceSelectionError) {
             message = '找到多台设备';
-          } else if (
-            reason instanceof BatteryIdentityTimeoutError ||
-            reason instanceof NtcIdentityTimeoutError
-          ) {
+          } else if (reason instanceof BatteryIdentityTimeoutError) {
             message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
@@ -275,7 +258,7 @@ export function DeviceConnectionProvider({
 
   const connectLastDevice = useEffectEvent(async () => {
     await connectTaskRef.current;
-    if (mountedRef.current) await connect(automaticKind(), true);
+    if (mountedRef.current) await connect(true);
   });
 
   useEffect(() => {

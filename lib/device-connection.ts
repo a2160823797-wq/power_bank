@@ -1,5 +1,5 @@
 import type { SerialPortLike } from './iap-protocol';
-import { DeviceSerialSession, type DeviceCallbacks, type DeviceKind } from './device-session';
+import { DeviceSerialSession, type DeviceCallbacks } from './device-session';
 
 interface DeviceConnection {
   port: SerialPortLike;
@@ -34,7 +34,6 @@ async function release(session: DeviceSerialSession) {
 
 async function probe(
   port: SerialPortLike,
-  kind: DeviceKind,
   signal?: AbortSignal,
   callbacks?: DeviceCallbacks,
   suppressFailure = true,
@@ -44,8 +43,7 @@ async function probe(
   try {
     await session.open();
     checkCancellation(signal);
-    await session.identify(kind, 500, signal);
-    if (kind === 'ntc') await session.identify('battery', 500, signal);
+    await session.identify(500, signal);
     checkCancellation(signal);
     if (!session.isOpen) throw new Error('设备在识别过程中已断开');
     return { port, session };
@@ -70,17 +68,16 @@ async function accept(connection: DeviceConnection | null, signal?: AbortSignal,
   return connection;
 }
 
-/** 扫描已获授权的端口，按当前功能的只读协议确认设备身份。 */
+/** 扫描已获授权的端口，通过只读电池握手确认设备身份。 */
 export async function discoverDevice(
   ports: SerialPortLike[],
   preferredPort: SerialPortLike | null,
-  kind: DeviceKind,
   signal?: AbortSignal,
   callbacks?: DeviceCallbacks,
 ): Promise<DeviceConnection | null> {
   checkCancellation(signal);
   if (preferredPort && ports.includes(preferredPort)) {
-    const connection = await probe(preferredPort, kind, signal, callbacks);
+    const connection = await probe(preferredPort, signal, callbacks);
     if (connection) return accept(connection, signal);
     checkCancellation(signal);
   }
@@ -88,7 +85,7 @@ export async function discoverDevice(
   let matchedPort: SerialPortLike | null = null;
   for (const port of ports) {
     if (port === preferredPort) continue;
-    const connection = await probe(port, kind, signal, callbacks);
+    const connection = await probe(port, signal, callbacks);
     if (!connection) continue;
     await release(connection.session);
     checkCancellation(signal);
@@ -97,15 +94,14 @@ export async function discoverDevice(
   }
   checkCancellation(signal);
   if (!matchedPort) return null;
-  return accept(await probe(matchedPort, kind, signal, callbacks), signal);
+  return accept(await probe(matchedPort, signal, callbacks), signal);
 }
 
 /** 首次授权或手动选择之后也核验身份，避免连接到其他串口设备。 */
 export async function connectSelectedDevice(
   port: SerialPortLike,
-  kind: DeviceKind,
   signal?: AbortSignal,
   callbacks?: DeviceCallbacks,
 ): Promise<DeviceConnection> {
-  return (await accept(await probe(port, kind, signal, callbacks, false), signal, false))!;
+  return (await accept(await probe(port, signal, callbacks, false), signal, false))!;
 }
