@@ -103,21 +103,26 @@ export default function BatteryMonitor() {
   }[battery.historyStatus];
 
   return (
-    <section className="battery-content" aria-label={text.monitoring}>
+    <section
+      className={`battery-content${connected ? '' : ' battery-empty'}`}
+      aria-label={text.monitoring}
+    >
       <section
         className="battery-connection"
         aria-label={text.serialConnection}
       >
-        <div className="battery-data-status" aria-live="polite">
-          <span>
-            {text.lastReport}
-            {battery.lastReceivedAt === null ? (
-              <EmptyValue />
-            ) : (
-              beijingReportTime.format(battery.lastReceivedAt)
-            )}
-          </span>
-        </div>
+        {connected && (
+          <div className="battery-data-status" aria-live="polite">
+            <span>
+              {text.lastReport}
+              {battery.lastReceivedAt === null ? (
+                <EmptyValue />
+              ) : (
+                beijingReportTime.format(battery.lastReceivedAt)
+              )}
+            </span>
+          </div>
+        )}
         <div className="battery-actions">
           <button
             className={`battery-button ${connected || connection === 'release-error' ? 'battery-button-secondary' : 'battery-button-primary'}`}
@@ -158,142 +163,152 @@ export default function BatteryMonitor() {
         </p>
       )}
 
-      <section className="battery-metrics" aria-label={text.liveMetrics}>
-        <div className="battery-metric">
-          <p className="battery-field-label">{text.totalVoltage}</p>
-          <p className="battery-metric-value">
-            {formatVoltage(battery.totalVoltageMv)}
-            <span>V</span>
-          </p>
-        </div>
-        <div className="battery-metric">
-          <p className="battery-field-label">{text.temperature}</p>
-          <p className="battery-metric-value">
-            {battery.temperatureC === null ? (
-              <EmptyValue />
-            ) : (
-              battery.temperatureC.toFixed(1)
-            )}
-            <span>°C</span>
-          </p>
-        </div>
-      </section>
-
-      <div className="battery-details-grid">
-        {visibleCellCount > 1 && (
-          <section
-            className="battery-panel"
-            aria-labelledby="battery-cells-title"
-          >
-            <div className="battery-panel-heading">
-              <h2 id="battery-cells-title">{text.cellVoltages}</h2>
-              <span className="battery-section-note">
-                {text.cellCount(visibleCellCount)}
-              </span>
+      {connected && (
+        <>
+          <section className="battery-metrics" aria-label={text.liveMetrics}>
+            <div className="battery-metric">
+              <p className="battery-field-label">{text.totalVoltage}</p>
+              <p className="battery-metric-value">
+                {formatVoltage(battery.totalVoltageMv)}
+                <span>V</span>
+              </p>
             </div>
-            <div className="battery-cell-grid">
-              {Array.from({ length: visibleCellCount }, (_, index) => (
-                <div className="battery-cell" key={index}>
-                  <span>{text.cell(index + 1)}</span>
-                  <strong>
-                    {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
-                    <small>V</small>
-                  </strong>
-                </div>
-              ))}
+            <div className="battery-metric">
+              <p className="battery-field-label">{text.temperature}</p>
+              <p className="battery-metric-value">
+                {battery.temperatureC === null ? (
+                  <EmptyValue />
+                ) : (
+                  battery.temperatureC.toFixed(1)
+                )}
+                <span>°C</span>
+              </p>
             </div>
           </section>
-        )}
 
-        <section
-          className="battery-panel"
-          aria-labelledby="battery-identity-title"
-        >
-          <div className="battery-panel-heading">
-            <h2 id="battery-identity-title">{text.cellInfo}</h2>
+          <div className="battery-details-grid">
+            {visibleCellCount > 1 && (
+              <section
+                className="battery-panel"
+                aria-labelledby="battery-cells-title"
+              >
+                <div className="battery-panel-heading">
+                  <h2 id="battery-cells-title">{text.cellVoltages}</h2>
+                  <span className="battery-section-note">
+                    {text.cellCount(visibleCellCount)}
+                  </span>
+                </div>
+                <div className="battery-cell-grid">
+                  {Array.from({ length: visibleCellCount }, (_, index) => (
+                    <div className="battery-cell" key={index}>
+                      <span>{text.cell(index + 1)}</span>
+                      <strong>
+                        {formatVoltage(battery.cellVoltagesMv[index] ?? null)}{' '}
+                        <small>V</small>
+                      </strong>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            <section
+              className="battery-panel"
+              aria-labelledby="battery-identity-title"
+            >
+              <div className="battery-panel-heading">
+                <h2 id="battery-identity-title">{text.cellInfo}</h2>
+              </div>
+              <dl className="battery-identity">
+                <div>
+                  <dt>{text.model}</dt>
+                  <dd>{battery.batteryModel || <EmptyValue />}</dd>
+                </div>
+                <div>
+                  <dt>{text.code}</dt>
+                  <dd>{battery.batteryCode || <EmptyValue />}</dd>
+                </div>
+              </dl>
+            </section>
           </div>
-          <dl className="battery-identity">
-            <div>
-              <dt>{text.model}</dt>
-              <dd>{battery.batteryModel || <EmptyValue />}</dd>
-            </div>
-            <div>
-              <dt>{text.code}</dt>
-              <dd>{battery.batteryCode || <EmptyValue />}</dd>
-            </div>
-          </dl>
-        </section>
-      </div>
 
-      <section
-        className="battery-panel battery-history"
-        aria-labelledby="battery-history-title"
-      >
-        <div className="battery-panel-heading">
-          <h2 id="battery-history-title">{text.history}</h2>
-        </div>
-        {battery.records.length === 0 ? (
-          <div className="battery-history-empty" aria-live="polite">
-            {battery.historyStatus === 'complete' ? (
-              <h3>{text.noRecords}</h3>
+          <section
+            className="battery-panel battery-history"
+            aria-labelledby="battery-history-title"
+          >
+            <div className="battery-panel-heading">
+              <h2 id="battery-history-title">{text.history}</h2>
+            </div>
+            {battery.records.length === 0 ? (
+              <div className="battery-history-empty" aria-live="polite">
+                {battery.historyStatus === 'complete' ? (
+                  <h3>{text.noRecords}</h3>
+                ) : (
+                  <EmptyValue />
+                )}
+              </div>
             ) : (
-              <EmptyValue />
-            )}
-          </div>
-        ) : (
-          <>
-            {historyDescription && (
-              <p className="battery-history-description" aria-live="polite">
-                {historyDescription}
-              </p>
-            )}
-            <ul className="battery-records" aria-label={text.historyRecords}>
-              {battery.records.map((record) => (
-                <li key={record.id}>
-                  <div className="battery-record-heading">
-                    <h3>
-                      {record.type === 'overvoltage'
-                        ? text.overvoltage
-                        : text.overtemperature}
-                    </h3>
-                    {showRecordCell && (
-                      <span>
-                        {record.cell === 0
-                          ? text.batteryPack
-                          : text.cell(record.cell)}
-                      </span>
-                    )}
-                  </div>
-                  <p
-                    className="battery-record-value"
-                    aria-label={text.recordValue}
-                  >
-                    <span className="battery-record-number">
-                      {record.type === 'overvoltage'
-                        ? (record.value / 1000).toFixed(3)
-                        : (record.value / 10).toFixed(1)}
-                    </span>
-                    <span className="battery-record-unit">
-                      <span className="battery-record-degree">
-                        {record.type === 'overvoltage' ? '' : '°'}
-                      </span>
-                      <span className="battery-record-symbol">
-                        {record.type === 'overvoltage' ? 'V' : 'C'}
-                      </span>
-                    </span>
+              <>
+                {historyDescription && (
+                  <p className="battery-history-description" aria-live="polite">
+                    {historyDescription}
                   </p>
-                  <p
-                    className="battery-record-time"
-                    aria-label={text.occurrenceTime}
-                  >
-                    {formatTime(record.timeUnixSeconds, text.timeUnavailable)}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
-      </section>
+                )}
+                <ul
+                  className="battery-records"
+                  aria-label={text.historyRecords}
+                >
+                  {battery.records.map((record) => (
+                    <li key={record.id}>
+                      <div className="battery-record-heading">
+                        <h3>
+                          {record.type === 'overvoltage'
+                            ? text.overvoltage
+                            : text.overtemperature}
+                        </h3>
+                        {showRecordCell && (
+                          <span>
+                            {record.cell === 0
+                              ? text.batteryPack
+                              : text.cell(record.cell)}
+                          </span>
+                        )}
+                      </div>
+                      <p
+                        className="battery-record-value"
+                        aria-label={text.recordValue}
+                      >
+                        <span className="battery-record-number">
+                          {record.type === 'overvoltage'
+                            ? (record.value / 1000).toFixed(3)
+                            : (record.value / 10).toFixed(1)}
+                        </span>
+                        <span className="battery-record-unit">
+                          <span className="battery-record-degree">
+                            {record.type === 'overvoltage' ? '' : '°'}
+                          </span>
+                          <span className="battery-record-symbol">
+                            {record.type === 'overvoltage' ? 'V' : 'C'}
+                          </span>
+                        </span>
+                      </p>
+                      <p
+                        className="battery-record-time"
+                        aria-label={text.occurrenceTime}
+                      >
+                        {formatTime(
+                          record.timeUnixSeconds,
+                          text.timeUnavailable,
+                        )}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        </>
+      )}
     </section>
   );
 }
