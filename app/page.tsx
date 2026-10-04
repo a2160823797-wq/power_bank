@@ -340,19 +340,19 @@ function Workspace() {
             </button>
             <button
               type="button"
-              aria-pressed={view === 'ntc'}
-              disabled={running || connectionBusy}
-              onClick={() => changeView('ntc')}
-            >
-              {t.ntc}
-            </button>
-            <button
-              type="button"
               aria-pressed={view === 'upgrade'}
               disabled={running || connectionBusy}
               onClick={() => changeView('upgrade')}
             >
               {t.upgrade}
+            </button>
+            <button
+              type="button"
+              aria-pressed={view === 'ntc'}
+              disabled={running || connectionBusy}
+              onClick={() => changeView('ntc')}
+            >
+              {t.ntc}
             </button>
           </nav>
         </div>
