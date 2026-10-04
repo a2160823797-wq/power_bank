@@ -25,15 +25,23 @@
     justify-content: center;
     align-items: center;
     margin: 24px 0;
-  }
-  .ntc-temperature output {
-    min-width: 172px;
     color: #58c6ff;
     font: 500 66px/1.15 var(--font-mono);
-    text-align: center;
     letter-spacing: -0.07em;
   }
-  .ntc-temperature output small {
+  .ntc-temperature-input {
+    width: 3ch;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    letter-spacing: inherit;
+  }
+  .ntc-temperature small {
     font-size: 25px;
     margin-left: 8px;
     letter-spacing: 0;

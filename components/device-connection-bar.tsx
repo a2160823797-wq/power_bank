@@ -1,5 +1,3 @@
-'use client';
-
 import { CircleAlert, Loader2 } from 'lucide-react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 import type { DeviceKind } from '@/lib/device-session';

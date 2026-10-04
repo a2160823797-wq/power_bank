@@ -5,7 +5,6 @@ const projectRoot = resolve(import.meta.dirname, '..');
 const buildDirectory = resolve(projectRoot, '.offline-build');
 const outputFile = resolve(projectRoot, 'PowerBank.html');
 const css = (await readFile(resolve(buildDirectory, 'style.css'), 'utf8'))
-  .replaceAll('https://tailwindcss.com', '')
   .replaceAll('</style', '<\\/style');
 const javascript = (await readFile(resolve(buildDirectory, 'app.js'), 'utf8'))
   .replaceAll('https://react.dev/errors/', 'React error ')
@@ -20,7 +19,7 @@ const html = `<!doctype html>
     <title>PowerBank</title>
     <style>${css}</style>
   </head>
-  <body class="antialiased">
+  <body>
     <div id="root"></div>
     <script>${javascript}</script>
   </body>

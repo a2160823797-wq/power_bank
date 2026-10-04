@@ -1,5 +1,3 @@
-'use client';
-
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { CircleAlert } from 'lucide-react';
 import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
@@ -45,6 +43,7 @@ const t = {
   hideDetails: '收起详情',
   showDetails: '查看详情',
   startUpgrade: '一键升级',
+  restartUpgrade: '再次升级',
   statusToolTitle: '读取固件升级状态',
   statusToolDescription:
     '读取当前已选固件、设备连接和升级进度，不改变设备状态。',
@@ -465,7 +464,7 @@ function Workspace() {
               )}
             </div>
           )}
-          {firmware && !busy && stage !== 'success' && (
+          {firmware && !busy && (
             <div className="actions">
               <button
                 type="button"
@@ -478,7 +477,7 @@ function Workspace() {
                 }
                 onClick={startUpgrade}
               >
-                {t.startUpgrade}
+                {stage === 'success' ? t.restartUpgrade : t.startUpgrade}
               </button>
             </div>
           )}

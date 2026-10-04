@@ -1,7 +1,9 @@
-'use client';
-
 import { useEffect, useRef, useState } from 'react';
-import { NtcTimeoutError } from '@/lib/ntc-protocol';
+import {
+  NTC_MIN_TEMPERATURE,
+  NTC_MAX_TEMPERATURE,
+  NtcTimeoutError,
+} from '@/lib/ntc-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
 const ACK_TIMEOUT_MS = 1000;
@@ -13,6 +15,7 @@ export default function NtcSimulator() {
     setTemperature: setDeviceTemperature,
   } = useDeviceConnection();
   const [temperature, setTemperature] = useState(25);
+  const [temperatureInput, setTemperatureInput] = useState('25');
   const [feedbackState, setFeedbackState] = useState({
     connected,
     message: '',
@@ -90,6 +93,23 @@ export default function NtcSimulator() {
     })();
   }
 
+  function commitTemperature(value: string) {
+    const cur_temperature = Number(value);
+    if (
+      !/^-?\d+$/.test(value) ||
+      !Number.isInteger(cur_temperature) ||
+      cur_temperature < NTC_MIN_TEMPERATURE ||
+      cur_temperature > NTC_MAX_TEMPERATURE
+    ) {
+      setTemperatureInput(String(temperature));
+      setMessage('温度必须为 -25～125℃ 的整数');
+      return;
+    }
+    setTemperature(cur_temperature);
+    setTemperatureInput(String(cur_temperature));
+    sendTemperature(cur_temperature);
+  }
+
   if (!connected) return null;
 
   return (
@@ -97,21 +117,36 @@ export default function NtcSimulator() {
       {message && <output className="ntc-alert">{message}</output>}
       <section className="ntc-panel ntc-setpoint">
         <div className="ntc-temperature">
-          <output htmlFor="ntc-temperature-slider">
-            {temperature}
-            <small>℃</small>
-          </output>
+          <input
+            className="ntc-temperature-input"
+            type="text"
+            inputMode="numeric"
+            value={temperatureInput}
+            aria-label="设定温度"
+            onChange={(e) => setTemperatureInput(e.currentTarget.value)}
+            onBlur={(e) => commitTemperature(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
+          />
+          <small>℃</small>
         </div>
         <input
           id="ntc-temperature-slider"
           className="ntc-slider"
           type="range"
-          min="-25"
-          max="125"
+          min={NTC_MIN_TEMPERATURE}
+          max={NTC_MAX_TEMPERATURE}
           step="1"
           value={temperature}
           aria-label="设定温度"
-          onChange={(e) => setTemperature(Number(e.currentTarget.value))}
+          onChange={(e) => {
+            setTemperature(Number(e.currentTarget.value));
+            setTemperatureInput(e.currentTarget.value);
+          }}
           onPointerDown={(e) =>
             e.currentTarget.setPointerCapture(e.pointerId)
           }

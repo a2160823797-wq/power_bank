@@ -1,5 +1,3 @@
-'use client';
-
 import { selectSafetyRecords, type SafetyRecord } from '@/lib/battery-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
