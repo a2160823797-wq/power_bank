@@ -43,7 +43,6 @@ interface DeviceConnection {
   connection: Connection;
   connectionBusy: boolean;
   connected: boolean;
-  selectionRequired: boolean;
   error: string;
   battery: BatteryState;
   connect: (kind: DeviceKind, automatic?: boolean) => Promise<void>;
@@ -100,7 +99,6 @@ export function DeviceConnectionProvider({
   const [connection, setConnection] = useState<Connection>('disconnected');
   const [battery, setBattery] = useState(createBatteryState);
   const [error, setError] = useState('');
-  const [selectionRequired, setSelectionRequired] = useState(false);
   const [connectionBusy, setConnectionBusy] = useState(false);
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
@@ -108,7 +106,6 @@ export function DeviceConnectionProvider({
   const connectTaskRef = useRef<Promise<void> | null>(null);
   const connectControllerRef = useRef<AbortController | null>(null);
   const closeTaskRef = useRef<Promise<void> | null>(null);
-  const upgradeSelectionRef = useRef(false);
   const upgradeProbeRef = useRef<IapSerialSession | null>(null);
 
   const markBusy = useCallback((value: boolean) => {
@@ -157,6 +154,21 @@ export function DeviceConnectionProvider({
     }
   }, [markBusy]);
 
+  useEffect(() => {
+    if (connection !== 'connected' || connectionBusy) return;
+    const session = sessionRef.current;
+    const report_timer = globalThis.setTimeout(() => {
+      if (
+        sessionRef.current === session &&
+        session?.isOpen &&
+        !busyRef.current
+      ) {
+        void disconnect().catch(() => undefined);
+      }
+    }, 1000);
+    return () => globalThis.clearTimeout(report_timer);
+  }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
+
   async function connect(kind: DeviceKind, automatic = false) {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
@@ -168,8 +180,7 @@ export function DeviceConnectionProvider({
       let session: DeviceSerialSession | null = null;
       try {
         const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-        let selectedPort =
-          !automatic && selectionRequired ? await serial.requestPort() : null;
+        const ports = await serial.getPorts();
         if (controller.signal.aborted) return;
         const callbacks = {
           onData(candidate: DeviceSerialSession, state: BatteryState) {
@@ -189,8 +200,19 @@ export function DeviceConnectionProvider({
               .catch(() => undefined);
           },
         };
+        const preferred =
+          (await getSavedSerialPort(serial, LAST_PORT_KEY, ports)) ??
+          (await getSavedSerialPort(
+            serial,
+            kind === 'ntc'
+              ? 'powerbank.ntc-last-serial-port'
+              : 'powerbank.last-serial-port',
+            ports,
+          ));
+        if (automatic && !preferred) return;
         let result;
-        if (selectedPort) {
+        if (!ports.length && !automatic) {
+          const selectedPort = await serial.requestPort();
           result = await connectSelectedDevice(
             selectedPort,
             kind,
@@ -198,39 +220,17 @@ export function DeviceConnectionProvider({
             callbacks,
           );
         } else {
-          const ports = await serial.getPorts();
-          const preferred =
-            (await getSavedSerialPort(serial, LAST_PORT_KEY, ports)) ??
-            (await getSavedSerialPort(
-              serial,
-              kind === 'ntc'
-                ? 'powerbank.ntc-last-serial-port'
-                : 'powerbank.last-serial-port',
-              ports,
-            ));
-          if (automatic && !preferred) return;
-          if (!ports.length && !automatic) {
-            selectedPort = await serial.requestPort();
-            result = await connectSelectedDevice(
-              selectedPort,
-              kind,
-              controller.signal,
-              callbacks,
-            );
-          } else {
-            result = await discoverDevice(
-              ports,
-              preferred,
-              kind,
-              controller.signal,
-              callbacks,
-            );
-          }
+          result = await discoverDevice(
+            ports,
+            preferred,
+            kind,
+            controller.signal,
+            callbacks,
+          );
         }
         if (!result) {
           if (mountedRef.current) {
-            setSelectionRequired(true);
-            setError('未找到可用设备，请点击“选择设备”连接');
+            setError('未找到可用设备');
           }
           return;
         }
@@ -242,7 +242,6 @@ export function DeviceConnectionProvider({
           return;
         }
         if (!session.isOpen) throw new Error('设备已断开连接');
-        setSelectionRequired(false);
         setConnection('connected');
         rememberSerialPort(LAST_PORT_KEY, result.port);
         try {
@@ -268,19 +267,12 @@ export function DeviceConnectionProvider({
           sessionRef.current = null;
         if (mountedRef.current) {
           if (reason instanceof DeviceSelectionError) {
-            setSelectionRequired(true);
-            message = '找到多台设备，请点击“选择设备”确认';
+            message = '找到多台设备';
           } else if (
             reason instanceof BatteryIdentityTimeoutError ||
             reason instanceof NtcIdentityTimeoutError
           ) {
-            setSelectionRequired(true);
-          } else if (
-            !automatic &&
-            reason instanceof DOMException &&
-            reason.name === 'SecurityError'
-          ) {
-            setSelectionRequired(true);
+            message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
           setBattery((current) =>
@@ -340,27 +332,17 @@ export function DeviceConnectionProvider({
         upgradeProbeRef.current = null;
       }
       const serial = (navigator as Navigator & { serial: SerialApi }).serial;
+      const ports = await serial.getPorts();
       let selectedPort: SerialPortLike | null;
-      if (upgradeSelectionRef.current) {
+      if (!ports.length) {
         selectedPort = await serial.requestPort();
         await verifyUpgradePort(selectedPort, session);
       } else {
-        const ports = await serial.getPorts();
-        if (!ports.length) {
-          upgradeSelectionRef.current = true;
-          selectedPort = await serial.requestPort();
-          await verifyUpgradePort(selectedPort, session);
-        } else {
-          const preferred = session?.port ??
-            await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
-          selectedPort = await discoverUpgradePort(ports, preferred, session);
-          if (!selectedPort) {
-            upgradeSelectionRef.current = true;
-            throw new Error('未找到升级设备，请再次点击“一键升级”选择并授权设备');
-          }
-        }
+        const preferred = session?.port ??
+          await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
+        selectedPort = await discoverUpgradePort(ports, preferred, session);
+        if (!selectedPort) throw new Error('未找到升级设备');
       }
-      upgradeSelectionRef.current = false;
       rememberSerialPort(LAST_UPGRADE_PORT_KEY, selectedPort);
       if (session && selectedPort === session.port)
         return await session.withUpgrade(operation);
@@ -369,12 +351,10 @@ export function DeviceConnectionProvider({
       if (reason instanceof UpgradePortReleaseError)
         upgradeProbeRef.current = reason.session;
       if (reason instanceof DeviceSelectionError) {
-        upgradeSelectionRef.current = true;
-        throw new Error('发现多台升级设备，请再次点击“一键升级”选择目标设备');
+        throw new Error('发现多台升级设备');
       }
       if (reason instanceof DOMException && reason.name === 'SecurityError') {
-        upgradeSelectionRef.current = true;
-        throw new Error('需要授权升级设备，请再次点击“一键升级”选择设备');
+        throw new Error('需要授权升级设备');
       }
       throw reason;
     } finally {
@@ -389,7 +369,6 @@ export function DeviceConnectionProvider({
         connection,
         connectionBusy,
         connected: connection === 'connected',
-        selectionRequired,
         error,
         battery,
         connect,

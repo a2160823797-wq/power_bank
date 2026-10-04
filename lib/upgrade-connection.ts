@@ -4,7 +4,7 @@ import { DeviceSelectionError } from './device-connection';
 
 export class UpgradePortReleaseError extends Error {
   constructor(readonly session: IapSerialSession, error: unknown) {
-    super(`升级端口释放失败，请再次点击“一键升级”重试：${error instanceof Error ? error.message : String(error)}`);
+    super(`升级端口释放失败：${error instanceof Error ? error.message : String(error)}`);
     this.name = 'UpgradePortReleaseError';
   }
 }

@@ -160,38 +160,27 @@
     opacity: 0.55;
   }
   .device-connection {
+    display: grid;
     width: 100%;
     max-width: 1040px;
+    flex: 1;
+    place-items: center;
     margin-inline: auto;
-    padding-block: 28px 16px;
+    padding-block: 40px 56px;
   }
   .device-connection-panel {
     width: 100%;
-  }
-  .device-connection.is-empty {
-    display: grid;
-    flex: 1;
-    place-items: center;
-    padding-block: 40px 56px;
-  }
-  .device-connection.is-empty .device-connection-panel {
     max-width: 420px;
+    text-align: center;
   }
-  .device-connection-row {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
+  .device-connection-message {
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
   }
-  .device-connection.is-empty .device-connection-row {
-    justify-content: center;
-  }
-  .device-report {
-    min-width: 0;
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+  .battery-content,
+  .ntc-content {
+    padding-top: 24px;
   }
   .device-button {
     display: inline-flex;
@@ -200,7 +189,6 @@
     justify-content: center;
     flex-shrink: 0;
     gap: 7px;
-    margin-left: auto;
     padding: 8px 14px;
     border: 1px solid transparent;
     border-radius: 9px;
@@ -213,10 +201,9 @@
       background-color 150ms ease,
       border-color 150ms ease;
   }
-  .device-connection.is-empty .device-button {
+  .device-connection .device-button {
     min-width: 136px;
     min-height: 42px;
-    margin-left: 0;
     padding: 10px 24px;
   }
   .device-button svg {
@@ -241,29 +228,14 @@
   .device-button:disabled {
     opacity: 0.4;
   }
-  .device-message {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
+  .device-message,
+  .error-message {
     margin-top: 14px;
-    padding: 12px 14px;
-    border: 1px solid #635137;
-    border-radius: 10px;
-    background: #241e16;
+    color: var(--destructive);
     font-size: 0.8125rem;
     line-height: 1.7;
-    text-align: left;
+    text-align: center;
     overflow-wrap: anywhere;
-  }
-  .device-message > svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    margin-top: 3px;
-  }
-  .device-message-error {
-    border-color: #603834;
-    background: #2b1b1b;
   }
   .device-spin {
     animation: device-spin 1s linear infinite;
@@ -393,29 +365,6 @@
     background: #303034;
     color: #85858d;
   }
-  .error-message {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-top: 20px;
-    padding: 12px 14px;
-    border: 1px solid #623c38;
-    border-radius: 10px;
-    background: #34201f;
-    color: var(--destructive);
-    font-size: 0.8125rem;
-    line-height: 1.7;
-    overflow-wrap: anywhere;
-  }
-  .error-message > svg {
-    width: 17px;
-    height: 17px;
-    flex-shrink: 0;
-    margin-top: 3px;
-  }
-  .error-message > p {
-    min-width: 0;
-  }
   .browser-note {
     margin-top: 20px;
     color: var(--muted-foreground);
@@ -423,49 +372,6 @@
     line-height: 1.7;
     text-align: center;
     text-wrap: balance;
-  }
-  .diagnostics {
-    margin-top: 16px;
-    text-align: center;
-  }
-  .detail-toggle {
-    display: inline-flex;
-    min-height: 44px;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    padding: 8px 12px;
-    border-radius: 8px;
-    color: var(--muted-foreground);
-    font-size: 0.75rem;
-    line-height: 1.5;
-    transition: color 180ms ease;
-  }
-  .detail-toggle:hover {
-    color: var(--accent-foreground);
-  }
-  .detail-toggle > svg {
-    width: 13px;
-    height: 13px;
-  }
-  .upgrade-logs {
-    max-height: 176px;
-    overflow-y: auto;
-    margin-top: 8px;
-    padding: 14px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: #141416;
-    color: var(--muted-foreground);
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    line-height: 1.8;
-    text-align: left;
-    overflow-wrap: anywhere;
-    scrollbar-width: thin;
-  }
-  .upgrade-logs > p + p {
-    margin-top: 4px;
   }
 }
 
@@ -490,6 +396,11 @@
     grid-row: 2;
     justify-self: end;
   }
+  .topbar-controls > .device-button {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+  }
 }
 
 @media (max-width: 520px) {
@@ -508,9 +419,6 @@
   }
   .updater-content {
     padding-block: 40px 48px;
-  }
-  .device-connection {
-    padding-top: 20px;
   }
   .file-drop {
     padding: 20px 16px;

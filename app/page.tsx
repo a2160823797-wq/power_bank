@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { CircleAlert } from 'lucide-react';
 import { crc32, IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import BatteryMonitor from '@/components/battery-monitor';
 import {
@@ -10,7 +9,9 @@ import {
   type WorkspaceView,
 } from '@/lib/workspace-view';
 import NtcSimulator from '@/components/ntc-simulator';
-import DeviceConnectionBar from '@/components/device-connection-bar';
+import DeviceConnectionBar, {
+  DeviceConnectionButton,
+} from '@/components/device-connection-bar';
 import {
   DeviceConnectionProvider,
   useDeviceConnection,
@@ -40,8 +41,6 @@ const t = {
   dropFirmware: '也可将 .bin 文件拖到这里',
   transferProgress: '固件传输进度',
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
-  hideDetails: '收起详情',
-  showDetails: '查看详情',
   startUpgrade: '一键升级',
   restartUpgrade: '再次升级',
   statusToolTitle: '读取固件升级状态',
@@ -65,10 +64,6 @@ const t = {
   } satisfies Record<Stage, string>,
 };
 
-function formatBytes(value: number) {
-  return value < 1024 ? `${value} B` : `${(value / 1024).toFixed(2)} KiB`;
-}
-
 function formatHex(value: number) {
   return `0x${value.toString(16).toUpperCase().padStart(8, '0')}`;
 }
@@ -87,7 +82,7 @@ function Workspace() {
     getWorkspaceView,
     getServerWorkspaceView,
   );
-  const { serialSupported, connectionBusy, connected, withUpgrade } =
+  const { serialSupported, connection, connectionBusy, connected, withUpgrade } =
     useDeviceConnection();
   const [running, setRunning] = useState(false);
   const [loadingFile, setLoadingFile] = useState(false);
@@ -98,10 +93,6 @@ function Workspace() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState('');
   const [dragging, setDragging] = useState(false);
-  const [logs, setLogs] = useState<string[]>([
-    '升级器已就绪 · 等待选择 .bin 固件',
-  ]);
-  const [logsExpanded, setLogsExpanded] = useState(false);
   const sessionRef = useRef<IapSerialSession | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const statusRef = useRef({
@@ -124,13 +115,6 @@ function Workspace() {
   const showTransferProgress =
     ['writing', 'verifying'].includes(stage) ||
     (stage === 'error' && progress > 0);
-  const showDiagnostics =
-    stage === 'error' && logs.some((entry) => entry.startsWith('!'));
-
-  function log(message: string, tone: 'info' | 'success' | 'error' = 'info') {
-    const prefix = tone === 'success' ? '✓' : tone === 'error' ? '!' : '›';
-    setLogs((current) => [...current.slice(-6), `${prefix} ${message}`]);
-  }
 
   async function loadFile(file?: File) {
     if (!file || runningRef.current) return;
@@ -153,11 +137,6 @@ function Workspace() {
       setFirmware(info);
       setStage('ready');
       setProgress(0);
-      setLogsExpanded(false);
-      setLogs([
-        `✓ 已加载 ${file.name}`,
-        `› 大小 ${formatBytes(data.length)} · CRC32 ${formatHex(info.crc)}`,
-      ]);
     } catch (reason) {
       if (request !== fileLoadRef.current) return;
       setError(reason instanceof Error ? reason.message : '无法读取固件文件');
@@ -182,17 +161,15 @@ function Workspace() {
     }
     setError('');
     setProgress(0);
-    setLogsExpanded(false);
     setStage('connecting');
     runningRef.current = true;
     setRunning(true);
     try {
       await withUpgrade(async (port) => {
-        const session = new IapSerialSession(port, log);
+        const session = new IapSerialSession(port, () => {});
         sessionRef.current = session;
         try {
           await session.open();
-          log('设备已连接，正在准备升级');
           await session.upgrade(
             firmware.file.name,
             firmware.data,
@@ -212,11 +189,9 @@ function Workspace() {
         reason instanceof Error ? reason.message : '升级过程中发生未知错误';
       if (message !== '升级已取消') {
         setError(message);
-        log(message, 'error');
         setStage('error');
       } else {
         setStage('ready');
-        log('升级已取消');
       }
     } finally {
       sessionRef.current = null;
@@ -355,6 +330,11 @@ function Workspace() {
               {t.ntc}
             </button>
           </nav>
+          {(view === 'battery' || view === 'ntc') &&
+            connection !== 'disconnected' &&
+            connection !== 'connecting' && (
+              <DeviceConnectionButton kind={view} />
+            )}
         </div>
       </header>
       {(view === 'battery' || view === 'ntc') && (
@@ -436,33 +416,12 @@ function Workspace() {
             </div>
           )}
           {displayedError && (
-            <div className="error-message" role="alert">
-              <CircleAlert aria-hidden="true" />
-              <p>{displayedError}</p>
-            </div>
+            <p className="error-message" role="alert">
+              {displayedError}
+            </p>
           )}
           {serialSupported === false && (
             <p className="browser-note">{t.browserNote}</p>
-          )}
-          {showDiagnostics && (
-            <div className="diagnostics">
-              <button
-                type="button"
-                className="detail-toggle"
-                aria-expanded={logsExpanded}
-                aria-controls="upgrade-logs"
-                onClick={() => setLogsExpanded((current) => !current)}
-              >
-                {logsExpanded ? t.hideDetails : t.showDetails}
-              </button>
-              {logsExpanded && (
-                <div id="upgrade-logs" className="upgrade-logs">
-                  {logs.map((entry, index) => (
-                    <p key={`${entry}-${index}`}>{entry}</p>
-                  ))}
-                </div>
-              )}
-            </div>
           )}
           {firmware && !busy && (
             <div className="actions">

@@ -12,6 +12,7 @@ export default function NtcSimulator() {
   const {
     connectionBusy,
     connected,
+    disconnect,
     setTemperature: setDeviceTemperature,
   } = useDeviceConnection();
   const [temperature, setTemperature] = useState(25);
@@ -77,13 +78,13 @@ export default function NtcSimulator() {
           !controller.signal.aborted &&
           !(reason instanceof Error && reason.name === 'AbortError')
         ) {
-          setMessage(
-            reason instanceof NtcTimeoutError
-              ? `${cur_temperature}℃ 设置超时，请检查设备连接后重试`
-              : reason instanceof Error
-                ? reason.message
-                : String(reason),
-          );
+          if (reason instanceof NtcTimeoutError) {
+            await disconnect().catch(() => undefined);
+          } else {
+            setMessage(
+              reason instanceof Error ? reason.message : String(reason),
+            );
+          }
         }
       } finally {
         controllerRef.current = null;
@@ -102,7 +103,6 @@ export default function NtcSimulator() {
       cur_temperature > NTC_MAX_TEMPERATURE
     ) {
       setTemperatureInput(String(temperature));
-      setMessage('温度必须为 -25～125℃ 的整数');
       return;
     }
     setTemperature(cur_temperature);
@@ -122,6 +122,7 @@ export default function NtcSimulator() {
             type="text"
             inputMode="numeric"
             value={temperatureInput}
+            style={{ width: `${Math.max(temperatureInput.length, 1)}ch` }}
             aria-label="设定温度"
             onChange={(e) => setTemperatureInput(e.currentTarget.value)}
             onBlur={(e) => commitTemperature(e.currentTarget.value)}
