@@ -4,116 +4,7 @@
     max-width: 1040px;
     flex: 1;
     margin-inline: auto;
-    padding-block: 28px 56px;
-  }
-  .battery-empty {
-    display: flex;
-    min-height: clamp(320px, calc(100dvh - 180px), 640px);
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 20px;
-  }
-  .battery-empty .battery-connection {
-    margin-bottom: 0;
-  }
-  .battery-empty .battery-button {
-    min-height: 42px;
-    padding: 10px 24px;
-  }
-  .battery-empty .battery-message {
-    width: 100%;
-    max-width: 460px;
-    margin-top: 20px;
-  }
-  .battery-connection {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 16px;
-  }
-  .battery-actions {
-    display: flex;
-    flex-shrink: 0;
-    gap: 10px;
-  }
-  .battery-button {
-    display: inline-flex;
-    min-height: 38px;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    padding: 8px 14px;
-    border: 1px solid transparent;
-    border-radius: 9px;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 1.5;
-    white-space: nowrap;
-    transition:
-      background-color 150ms ease,
-      border-color 150ms ease;
-  }
-  .battery-button svg {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-  }
-  .battery-button-primary {
-    background: var(--primary);
-    color: var(--foreground);
-  }
-  .battery-button-primary:not(:disabled):hover {
-    background: #147ce5;
-  }
-  .battery-button-secondary {
-    border-color: #3b3b40;
-    background: #252528;
-    color: var(--foreground);
-  }
-  .battery-button-secondary:not(:disabled):hover {
-    border-color: #57575f;
-    background: #303034;
-  }
-  .battery-button:disabled {
-    opacity: 0.4;
-  }
-  .battery-message {
-    display: flex;
-    align-items: flex-start;
-    gap: 9px;
-    margin-top: 14px;
-    padding: 12px 14px;
-    border: 1px solid #635137;
-    border-radius: 10px;
-    background: #241e16;
-    color: var(--foreground);
-    font-size: 0.8125rem;
-    line-height: 1.7;
-    overflow-wrap: anywhere;
-  }
-  .battery-message > svg {
-    width: 16px;
-    height: 16px;
-    flex-shrink: 0;
-    margin-top: 3px;
-  }
-  .battery-message-error {
-    border-color: #603834;
-    background: #2b1b1b;
-    color: var(--foreground);
-  }
-  .battery-data-status {
-    display: flex;
-    min-width: 0;
-    flex-direction: column;
-    gap: 3px;
-    color: var(--foreground);
-    font-size: 0.8125rem;
-    line-height: 1.5;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    padding-bottom: 56px;
   }
   .battery-metrics {
     display: grid;
@@ -336,15 +227,6 @@
     text-align: right;
     white-space: nowrap;
   }
-  .battery-spin {
-    animation: battery-spin 1s linear infinite;
-  }
-}
-
-@keyframes battery-spin {
-  to {
-    transform: rotate(360deg);
-  }
 }
 
 @media (max-width: 760px) {
@@ -379,15 +261,8 @@
     grid-column: 2 / -1;
     text-align: left;
   }
-  .battery-connection {
-    flex-wrap: wrap;
-    gap: 12px;
-  }
-  .battery-actions {
-    margin-left: auto;
-  }
   .battery-content {
-    padding-block: 20px 40px;
+    padding-bottom: 40px;
   }
   .battery-metrics {
     gap: 12px;
@@ -410,14 +285,5 @@
   }
   .battery-history-empty {
     padding-inline: 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .battery-spin {
-    animation-duration: 2s;
-  }
-  .battery-button {
-    transition: none;
   }
 }

@@ -8,14 +8,8 @@ const ACK_TIMEOUT_MS = 1000;
 
 export default function NtcSimulator() {
   const {
-    serialSupported,
-    connection,
     connectionBusy,
     connected,
-    selectionRequired,
-    error,
-    connect,
-    disconnect,
     setTemperature: setDeviceTemperature,
   } = useDeviceConnection();
   const [temperature, setTemperature] = useState(25);
@@ -96,99 +90,52 @@ export default function NtcSimulator() {
     })();
   }
 
-  const connectionButton = (
-    <button
-      className="battery-button battery-button-primary"
-      disabled={connectionBusy || !serialSupported}
-      onClick={() => {
-        setMessage('');
-        void (
-          connected || connection === 'release-error'
-            ? disconnect()
-            : connect('ntc')
-        ).catch(() => undefined);
-      }}
-    >
-      {connection === 'connecting'
-        ? '正在连接…'
-        : connection === 'disconnecting'
-          ? '正在断开…'
-          : connection === 'release-error'
-            ? '重试断开'
-            : connected
-              ? '断开设备'
-              : selectionRequired
-                ? '选择设备'
-                : '连接设备'}
-    </button>
-  );
-  const feedback = (
-    <>
-      {serialSupported === false && (
-        <p className="ntc-alert" role="alert">
-          请使用桌面版 Chrome / Edge 打开此 HTML，当前环境不支持 Web Serial。
-        </p>
-      )}
-      {error && <output className="ntc-alert">{error}</output>}
-      {message && <output className="ntc-alert">{message}</output>}
-    </>
-  );
+  if (!connected) return null;
 
   return (
     <section className="ntc-content" aria-label="数字电位器">
-      {!connected && (
-        <div className="ntc-empty">
-          {connectionButton}
-          {feedback}
+      {message && <output className="ntc-alert">{message}</output>}
+      <section className="ntc-panel ntc-setpoint">
+        <div className="ntc-temperature">
+          <output htmlFor="ntc-temperature-slider">
+            {temperature}
+            <small>℃</small>
+          </output>
         </div>
-      )}
-      {connected && (
-        <>
-          <div className="ntc-heading">{connectionButton}</div>
-          {feedback}
-          <section className="ntc-panel ntc-setpoint">
-            <div className="ntc-temperature">
-              <output htmlFor="ntc-temperature-slider">
-                {temperature}
-                <small>℃</small>
-              </output>
-            </div>
-            <input
-              id="ntc-temperature-slider"
-              className="ntc-slider"
-              type="range"
-              min="-25"
-              max="125"
-              step="1"
-              value={temperature}
-              aria-label="设定温度"
-              onChange={(e) => setTemperature(Number(e.currentTarget.value))}
-              onPointerDown={(e) =>
-                e.currentTarget.setPointerCapture(e.pointerId)
-              }
-              onPointerUp={(e) =>
-                sendTemperature(Number(e.currentTarget.value))
-              }
-              onKeyUp={(e) => {
-                if (
-                  [
-                    'ArrowLeft',
-                    'ArrowRight',
-                    'ArrowUp',
-                    'ArrowDown',
-                    'Home',
-                    'End',
-                    'PageUp',
-                    'PageDown',
-                  ].includes(e.key)
-                ) {
-                  sendTemperature(Number(e.currentTarget.value));
-                }
-              }}
-            />
-          </section>
-        </>
-      )}
+        <input
+          id="ntc-temperature-slider"
+          className="ntc-slider"
+          type="range"
+          min="-25"
+          max="125"
+          step="1"
+          value={temperature}
+          aria-label="设定温度"
+          onChange={(e) => setTemperature(Number(e.currentTarget.value))}
+          onPointerDown={(e) =>
+            e.currentTarget.setPointerCapture(e.pointerId)
+          }
+          onPointerUp={(e) =>
+            sendTemperature(Number(e.currentTarget.value))
+          }
+          onKeyUp={(e) => {
+            if (
+              [
+                'ArrowLeft',
+                'ArrowRight',
+                'ArrowUp',
+                'ArrowDown',
+                'Home',
+                'End',
+                'PageUp',
+                'PageDown',
+              ].includes(e.key)
+            ) {
+              sendTemperature(Number(e.currentTarget.value));
+            }
+          }}
+        />
+      </section>
     </section>
   );
 }

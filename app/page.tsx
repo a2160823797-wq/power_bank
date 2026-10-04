@@ -12,6 +12,7 @@ import {
   type WorkspaceView,
 } from '@/lib/workspace-view';
 import NtcSimulator from '@/components/ntc-simulator';
+import DeviceConnectionBar from '@/components/device-connection-bar';
 import {
   DeviceConnectionProvider,
   useDeviceConnection,
@@ -357,6 +358,9 @@ function Workspace() {
           </nav>
         </div>
       </header>
+      {(view === 'battery' || view === 'ntc') && (
+        <DeviceConnectionBar kind={view} />
+      )}
       <div hidden={view !== 'battery'}>
         <BatteryMonitor />
       </div>
