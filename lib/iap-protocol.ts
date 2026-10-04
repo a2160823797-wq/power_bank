@@ -1,4 +1,4 @@
-import { GENERIC_CONFIG, IAP_BAUD_RATE, type IapConfig } from './iap-config';
+import { GENERIC_CONFIG, IAP_BAUD_RATE, IAP_PACKET_SIZE, type IapConfig } from './iap-config';
 
 const SOH = 0x01;
 const STX = 0x02;
@@ -373,19 +373,18 @@ export class IapSerialSession {
 
     this.log('正在写入固件');
     onStage('writing');
-    const { packetSize } = this.config;
-    const totalBlocks = Math.ceil(firmware.length / packetSize);
+    const totalBlocks = Math.ceil(firmware.length / IAP_PACKET_SIZE);
     for (let index = 0; index < totalBlocks; index += 1) {
       this.ensureActive();
-      const payload = new Uint8Array(packetSize);
+      const payload = new Uint8Array(IAP_PACKET_SIZE);
       payload.fill(0x1a);
-      const offset = index * packetSize;
-      payload.set(firmware.subarray(offset, offset + packetSize));
+      const offset = index * IAP_PACKET_SIZE;
+      payload.set(firmware.subarray(offset, offset + IAP_PACKET_SIZE));
       await this.sendPacketWithRetry(
-        ymodemPacket(packetSize === 1024 ? STX : SOH, index + 1, payload),
+        ymodemPacket(STX, index + 1, payload),
         `数据块 ${index + 1}`,
       );
-      const sent = Math.min(offset + packetSize, firmware.length);
+      const sent = Math.min(offset + IAP_PACKET_SIZE, firmware.length);
       onProgress(Math.round((sent / firmware.length) * 100), sent);
     }
 

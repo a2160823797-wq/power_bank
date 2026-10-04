@@ -16,6 +16,7 @@ const moduleUrl = (source) =>
 const configUrl = moduleUrl(await compile('../lib/iap-config.ts'));
 const {
   IAP_BAUD_RATE,
+  IAP_PACKET_SIZE,
   GENERIC_CONFIG,
   GENERIC_SETTINGS,
   X202_CONFIG,
@@ -170,6 +171,13 @@ function receiver(config, data, behavior = {}) {
         }
         return;
       }
+      if (behavior.reject1kData && packet[0] === 2) {
+        assert.equal(phase, 'data');
+        assert.ok(manifestAccepted);
+        assert.equal(packet.length, IAP_PACKET_SIZE + 5);
+        port.push([0x18, 0x18]);
+        return;
+      }
       const payload = packet.subarray(3, -2);
       assert.equal(packet[2], ~packet[1] & 255);
       assert.equal((packet.at(-2) << 8) | packet.at(-1), crc16(payload));
@@ -215,10 +223,10 @@ function receiver(config, data, behavior = {}) {
         phase = 'done';
       } else {
         assert.equal(phase, 'data');
-        assert.equal(packet[0], config.packetSize === 128 ? 1 : 2);
+        assert.equal(packet[0], 2);
         assert.equal(packet[1], block & 255);
-        assert.equal(payload.length, config.packetSize);
-        const count = Math.min(config.packetSize, data.length - offset);
+        assert.equal(payload.length, IAP_PACKET_SIZE);
+        const count = Math.min(IAP_PACKET_SIZE, data.length - offset);
         assert.deepEqual(
           payload.subarray(0, count),
           data.subarray(offset, offset + count),
@@ -298,7 +306,6 @@ test('invalid settings are rejected before opening a port', () => {
     { maxAttempts: '0' },
     { maxAppSize: '0xGG' },
     { responseTimeoutMs: '1' },
-    { packetSize: '512' },
     { validation: 'cortex-m' },
   ])
     assert.ok(
@@ -321,9 +328,9 @@ for (const scenario of [
     behavior: { startBootReady: true, singleEot: true },
   },
   {
-    name: 'generic 128-byte packets and sequence rollover',
-    config: { ...GENERIC_CONFIG, packetSize: 128 },
-    size: 33025,
+    name: 'generic 1K packets and sequence rollover',
+    config: GENERIC_CONFIG,
+    size: 256 * 1024 + 1,
     behavior: {},
   },
   {
@@ -333,7 +340,7 @@ for (const scenario of [
     behavior: { retryHeader: true, retryData: true, retryEnd: true },
   },
   {
-    name: 'CW32L910 command frames and CRC32 compatibility',
+    name: 'CW32 image to a 1K-capable receiver with command frames and CRC32',
     config: resolveIapConfig(CW32L910_SETTINGS).config,
     size: 2049,
     behavior: {},
@@ -533,7 +540,8 @@ test('default X202 memory bounds and response timeout match the Bootloader', () 
   assert.equal('protocol' in DEFAULT_CONFIG, false);
   assert.equal(IAP_BAUD_RATE, 1500000);
   assert.equal('baudRate' in DEFAULT_CONFIG, false);
-  assert.equal(DEFAULT_CONFIG.packetSize, 128);
+  assert.equal(IAP_PACKET_SIZE, 1024);
+  assert.equal('packetSize' in DEFAULT_CONFIG, false);
   assert.equal(DEFAULT_CONFIG.responseTimeoutMs, 5000);
   assert.ok(DEFAULT_CONFIG.responseTimeoutMs < 7000);
   assert.equal(DEFAULT_CONFIG.maxAppSize, 0xb400);
@@ -572,7 +580,7 @@ for (const { name, behavior } of [
   },
   { name: 'lost final ACK', behavior: { dropFinalAck: true } },
 ])
-  test(`X202 ${name}: manifest, data, CRC and completion`, async () => {
+  test(`X202 ${name}: manifest, 1K data, CRC and completion`, async () => {
     const config = { ...DEFAULT_CONFIG, responseTimeoutMs: 20 };
     const data = firmware(39448, 0x20001f30, 0x48d9);
     const { port, commands, done } = receiver(config, data, behavior);
@@ -587,6 +595,10 @@ for (const { name, behavior } of [
       );
       assert.ok(done());
       assert.deepEqual(commands, behavior.fallback ? [0, 2, 2, 3] : [0, 2, 3]);
+      assert.equal(
+        port.writes.filter((packet) => packet[0] === 2).length,
+        Math.ceil(data.length / IAP_PACKET_SIZE),
+      );
       if (behavior.dropFinalAck)
         assert.equal(
           port.writes.filter(
@@ -663,7 +675,7 @@ for (const [name, config, behavior, expected] of [
   });
 
 test(
-  'supplied CW32L910 APP BIN validates and completes the simulated transfer',
+  'supplied CW32 APP BIN validates and completes a 1K-capable simulated transfer',
   {
     skip: !process.env.IAP_TEST_FIRMWARE,
   },
@@ -687,7 +699,7 @@ test(
   },
 );
 
-test('CW32L910 transfers manifest and firmware using only IAP commands', async () => {
+test('CW32 image transfers manifest and firmware to a 1K-capable receiver using only IAP commands', async () => {
   const data = firmware(2048);
   const { port, commands, done } = receiver(CW32L910_CONFIG, data);
   const session = new IapSerialSession(port, () => {}, CW32L910_CONFIG);
@@ -697,4 +709,47 @@ test('CW32L910 transfers manifest and firmware using only IAP commands', async (
     assert.deepEqual(commands, [0, 2, 3]);
     assert.ok(done());
   } finally { await session.close(); }
+});
+
+test('CW32L910 current 128-only Bootloader rejects the first 1K data packet without retries or success', async () => {
+  const data = firmware(2048, 0x20001000, 0x4101);
+  const { port, commands, done } = receiver(CW32L910_CONFIG, data, {
+    reject1kData: true,
+  });
+  const logs = [];
+  const session = new IapSerialSession(
+    port,
+    (message) => logs.push(message),
+    CW32L910_CONFIG,
+  );
+  try {
+    await session.open();
+    await assert.rejects(
+      session.upgrade(
+        'firmware.bin',
+        data,
+        () => {},
+        () => {},
+      ),
+      /设备取消/,
+    );
+    assert.deepEqual(commands, [0, 2, 3]);
+    assert.equal(port.writes.filter((packet) => packet[0] === 2).length, 1);
+    assert.equal(
+      port.writes.some((packet) => packet[0] === 0x04),
+      false,
+    );
+    assert.equal(
+      port.writes.some(
+        (packet) => packet.length === 133 && packet[1] === 0 && packet[3] === 0,
+      ),
+      false,
+    );
+    assert.equal(done(), false);
+    assert.ok(
+      logs.every((message) => !/固件传输完成|设备已确认接收/.test(message)),
+    );
+  } finally {
+    await session.close();
+  }
 });

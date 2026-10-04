@@ -1,7 +1,7 @@
+export const IAP_PACKET_SIZE = 1024;
 export const IAP_BAUD_RATE = 1500000;
 
 export interface IapConfig {
-  packetSize: 128 | 1024;
   responseTimeoutMs: number;
   handshakeTimeoutMs: number;
   maxAttempts: number;
@@ -10,7 +10,6 @@ export interface IapConfig {
 }
 
 export interface IapSettings {
-  packetSize: '128' | '1024';
   responseTimeoutMs: string;
   handshakeTimeoutMs: string;
   maxAttempts: string;
@@ -22,7 +21,6 @@ export interface IapSettings {
 }
 
 export const GENERIC_SETTINGS: IapSettings = {
-  packetSize: '1024',
   responseTimeoutMs: '10000',
   handshakeTimeoutMs: '30000',
   maxAttempts: '10',
@@ -36,7 +34,6 @@ export const GENERIC_SETTINGS: IapSettings = {
 // x202_015: IAP/iap.h、System/cell_info.h 和 System/uart.c
 export const X202_SETTINGS: IapSettings = {
   ...GENERIC_SETTINGS,
-  packetSize: '128',
   // The Bootloader retains final ACK replies for 7 seconds. Retry before it exits.
   responseTimeoutMs: '5000',
   validation: 'cortex-m',
@@ -65,10 +62,7 @@ export function resolveIapConfig(
     };
     if (!['size', 'cortex-m'].includes(settings.validation))
       throw new Error('请选择支持的固件校验方式');
-    if (!['128', '1024'].includes(settings.packetSize))
-      throw new Error('数据包应为 128 或 1024 字节');
     const config: IapConfig = {
-      packetSize: Number(settings.packetSize) as 128 | 1024,
       responseTimeoutMs: integer(
         settings.responseTimeoutMs,
         '响应超时',
@@ -120,7 +114,6 @@ export const GENERIC_CONFIG = resolveIapConfig(GENERIC_SETTINGS).config!;
 export const X202_CONFIG = resolveIapConfig(X202_SETTINGS).config!;
 export const CW32L910_SETTINGS: IapSettings = {
   ...X202_SETTINGS,
-  packetSize: '128',
   appStart: '0x4000',
   maxAppSize: '0xBA00',
   ramSize: '0x1000',

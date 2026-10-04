@@ -413,8 +413,11 @@ test('physical failure during upgrade preserves the operation error and cannot r
   assert.equal(port.closeCount, 1);
 });
 
-test('actual IAP handshake and YMODEM transfer use the exclusive channel and restore monitoring', async () => {
-  const firmware = Uint8Array.from({ length: 256 }, (_unused, index) => index & 0xff);
+test('universal IAP accepts fragmented command and YMODEM acknowledgements on the exclusive channel and restores monitoring', async () => {
+  const firmware = Uint8Array.from(
+    { length: 1500 },
+    (_unused, index) => index & 0xff,
+  );
   const vectors = new DataView(firmware.buffer);
   vectors.setUint32(0, 0x20001000, true);
   vectors.setUint32(4, 0x4801, true);
@@ -428,7 +431,11 @@ test('actual IAP handshake and YMODEM transfer use the exclusive channel and res
   const fragments = (bytes) => [...bytes].map((byte) => Uint8Array.of(byte));
   const port = new MockPort((packet) => {
     if (packet[0] === 0xaa && packet[1] !== 0x55) {
-      assert.equal(upgradeMode, false, 'monitoring must not transmit during IAP');
+      assert.equal(
+        upgradeMode,
+        false,
+        'monitoring must not transmit during IAP',
+      );
       return deviceReply(packet);
     }
     if (packet[0] === 0xaa) {
@@ -441,13 +448,21 @@ test('actual IAP handshake and YMODEM transfer use the exclusive channel and res
         upgradeMode = true;
       } else if (command === 3) {
         assert.equal(upgradeMode, true);
-        const transferInfo = new DataView(packet.buffer, packet.byteOffset + 5, 8);
+        const transferInfo = new DataView(
+          packet.buffer,
+          packet.byteOffset + 5,
+          8,
+        );
         assert.equal(transferInfo.getUint32(0, true), firmware.length);
         assert.equal(transferInfo.getUint32(4, true), crc32(firmware));
       } else assert.equal(command, 0);
       const body = Uint8Array.from([command, 1, 0, 1]);
       const reply = Uint8Array.from([
-        0xaa, 0x55, ...body, iapCrc8(body), ...(command === 2 || command === 3 ? [0x43] : []),
+        0xaa,
+        0x55,
+        ...body,
+        iapCrc8(body),
+        ...(command === 2 || command === 3 ? [0x43] : []),
       ]);
       return fragments(reply);
     }
@@ -459,13 +474,13 @@ test('actual IAP handshake and YMODEM transfer use the exclusive channel and res
       phase = 'end';
       return fragments([0x06, 0x43]);
     }
-    assert.equal(packet[0], 0x01);
-    assert.equal(packet[2], (~packet[1]) & 0xff);
+    assert.equal(packet[2], ~packet[1] & 0xff);
     const payload = packet.subarray(3, -2);
-    assert.equal(payload.length, 128);
     assert.equal((packet.at(-2) << 8) | packet.at(-1), crc16(payload));
     if (phase === 'header') {
+      assert.equal(packet[0], 0x01);
       assert.equal(packet[1], 0);
+      assert.equal(payload.length, 128);
       const metadata = new TextDecoder().decode(payload).split('\0');
       assert.equal(metadata[0], 'firmware.bin');
       assert.equal(metadata[1], String(firmware.length));
@@ -473,13 +488,21 @@ test('actual IAP handshake and YMODEM transfer use the exclusive channel and res
       return fragments([0x06, 0x43]);
     }
     if (phase === 'data') {
+      assert.equal(packet[0], 0x02);
       assert.equal(packet[1], block);
-      assert.deepEqual(payload, firmware.subarray(offset, offset + 128));
-      offset += 128;
+      assert.equal(payload.length, 1024);
+      const sent = Math.min(1024, firmware.length - offset);
+      assert.deepEqual(
+        payload.subarray(0, sent),
+        firmware.subarray(offset, offset + sent),
+      );
+      assert.ok(payload.subarray(sent).every((byte) => byte === 0x1a));
+      offset += sent;
       block += 1;
       return fragments([0x06]);
     }
     assert.equal(phase, 'end');
+    assert.equal(packet[0], 0x01);
     assert.equal(packet[1], 0);
     assert.deepEqual(payload, new Uint8Array(128));
     phase = 'done';
@@ -500,8 +523,17 @@ test('actual IAP handshake and YMODEM transfer use the exclusive channel and res
     });
     try {
       await iap.open();
-      await iap.upgrade('firmware.bin', firmware, (percent) => progress.push(percent), (stage) => stages.push(stage));
-      assert.equal(received.length, count, 'IAP must not populate battery data');
+      await iap.upgrade(
+        'firmware.bin',
+        firmware,
+        (percent) => progress.push(percent),
+        (stage) => stages.push(stage),
+      );
+      assert.equal(
+        received.length,
+        count,
+        'IAP must not populate battery data',
+      );
     } finally {
       await iap.close();
     }
