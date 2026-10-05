@@ -172,6 +172,15 @@ function configureSerialPermissions(appSession) {
     (webContents, permission, callback, details) =>
       callback(Boolean(allowSerial(webContents, permission, details))),
   );
+  // 本地主页面直接枚举串口，设备身份由现有电池协议握手确认
+  appSession.setDevicePermissionHandler((details) =>
+    Boolean(
+      details.deviceType === 'serial' &&
+      details.origin === 'file://' &&
+      mainWindow &&
+      isMainPage(mainWindow.webContents),
+    ),
+  );
   appSession.on(
     'select-serial-port',
     (event, portList, webContents, callback) => {

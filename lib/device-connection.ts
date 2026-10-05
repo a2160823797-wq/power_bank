@@ -1,5 +1,6 @@
 import type { SerialPortLike } from './iap-protocol';
 import { DeviceSerialSession, type DeviceCallbacks } from './device-session';
+import { BatteryIdentityTimeoutError } from './battery-protocol';
 
 interface DeviceConnection {
   port: SerialPortLike;
@@ -43,7 +44,17 @@ async function probe(
   try {
     await session.open();
     checkCancellation(signal);
-    await session.identify(500, signal);
+    // 首次打开串口可能尚未响应，在当前会话内重试识别
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await session.identify(500, signal);
+        break;
+      } catch (error) {
+        if (!(error instanceof BatteryIdentityTimeoutError) || attempt === 2)
+          throw error;
+        checkCancellation(signal);
+      }
+    }
     checkCancellation(signal);
     if (!session.isOpen) throw new Error('设备在识别过程中已断开');
     return { port, session };
