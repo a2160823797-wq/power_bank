@@ -40,9 +40,10 @@ interface DeviceConnection {
   connection: Connection;
   connectionBusy: boolean;
   connected: boolean;
+  manualSelection: boolean;
   error: string;
   battery: BatteryState;
-  connect: (automatic?: boolean) => Promise<void>;
+  connect: (automatic?: boolean, manual?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   setTemperature: (
     temperature: number,
@@ -76,6 +77,7 @@ export function DeviceConnectionProvider({
   const [battery, setBattery] = useState(createBatteryState);
   const [error, setError] = useState('');
   const [connectionBusy, setConnectionBusy] = useState(false);
+  const [manualSelection, setManualSelection] = useState(false);
   const mountedRef = useRef(true);
   const busyRef = useRef(false);
   const sessionRef = useRef<DeviceSerialSession | null>(null);
@@ -145,7 +147,7 @@ export function DeviceConnectionProvider({
     return () => globalThis.clearTimeout(report_timer);
   }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
 
-  async function connect(automatic = false) {
+  async function connect(automatic = false, manual = false) {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
@@ -156,7 +158,8 @@ export function DeviceConnectionProvider({
       let session: DeviceSerialSession | null = null;
       try {
         const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-        const ports = await serial.getPorts();
+        const selectedPort = manual ? await serial.requestPort() : null;
+        const ports = selectedPort ? [] : await serial.getPorts();
         if (controller.signal.aborted) return;
         const callbacks = {
           onData(candidate: DeviceSerialSession, state: BatteryState) {
@@ -176,13 +179,15 @@ export function DeviceConnectionProvider({
               .catch(() => undefined);
           },
         };
-        const preferred = await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
+        const preferred = selectedPort
+          ? null
+          : await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
         if (automatic && !preferred) return;
         let result;
-        if (!ports.length && !automatic) {
-          const selectedPort = await serial.requestPort();
+        if (selectedPort || (!ports.length && !automatic)) {
+          const port = selectedPort ?? await serial.requestPort();
           result = await connectSelectedDevice(
-            selectedPort,
+            port,
             controller.signal,
             callbacks,
           );
@@ -197,6 +202,7 @@ export function DeviceConnectionProvider({
         if (!result) {
           if (mountedRef.current) {
             setError('未找到可用设备');
+            setManualSelection(true);
           }
           return;
         }
@@ -208,6 +214,7 @@ export function DeviceConnectionProvider({
         }
         if (!session.isOpen) throw new Error('设备已断开连接');
         setConnection('connected');
+        setManualSelection(false);
         rememberSerialPort(LAST_PORT_KEY, result.port);
         await session.requestHistory();
       } catch (reason) {
@@ -226,6 +233,12 @@ export function DeviceConnectionProvider({
           }
         }
         if (mountedRef.current) {
+          if (
+            !releaseFailed &&
+            !(reason instanceof DOMException &&
+              ['NotFoundError', 'AbortError'].includes(reason.name))
+          )
+            setManualSelection(true);
           if (reason instanceof DeviceSelectionError) {
             message = '找到多台设备';
           } else if (reason instanceof BatteryIdentityTimeoutError) {
@@ -322,6 +335,7 @@ export function DeviceConnectionProvider({
         connection,
         connectionBusy,
         connected: connection === 'connected',
+        manualSelection,
         error,
         battery,
         connect,

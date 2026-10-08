@@ -7,11 +7,12 @@ export function DeviceConnectionButton() {
     connection,
     connectionBusy,
     connected,
+    manualSelection,
     connect,
     disconnect,
   } = useDeviceConnection();
   const buttonText = {
-    disconnected: '连接设备',
+    disconnected: manualSelection ? '选择设备' : '连接设备',
     connecting: '连接中',
     connected: '断开连接',
     disconnecting: '断开中',
@@ -27,7 +28,7 @@ export function DeviceConnectionButton() {
         void (
           connected || connection === 'release-error'
             ? disconnect()
-            : connect()
+            : connect(false, manualSelection)
         ).catch(() => undefined);
       }}
     >
