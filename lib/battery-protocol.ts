@@ -272,6 +272,11 @@ export class BatterySerialSession {
   private historyStarted = false;
   private historyInvalid = false;
   private pendingIdentity: PendingIdentity | null = null;
+  private pendingInfoWrite: {
+    field: number;
+    resolve(): void;
+    reject(error: Error): void;
+  } | null = null;
   private query_timer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private readonly parser: BatteryFrameParser;
 
@@ -337,6 +342,7 @@ export class BatterySerialSession {
     if (this.query_timer !== null) globalThis.clearTimeout(this.query_timer);
     this.query_timer = null;
     this.pendingIdentity?.reject(new Error('串口已关闭'));
+    this.pendingInfoWrite?.reject(new Error('串口已关闭'));
     this.cancelWriteDelay?.();
     this.parser.clear();
     this.closeTask = this.releaseResources().catch((error) => {
@@ -445,6 +451,30 @@ export class BatterySerialSession {
     return this.queueWrite([[0x0a, new Uint8Array()]]);
   }
 
+  async setCellInfo(field: 0 | 1, value: string) {
+    if (!/^[A-Z0-9-]{1,24}$/.test(value))
+      throw new Error('仅允许 A-Z、0-9、-，长度为 1～24 个字符');
+    if (!this.isOpen) throw new Error('请先连接设备');
+    if (this.pendingInfoWrite) throw new Error('上一条电芯设置尚未结束');
+    const response = new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        globalThis.clearTimeout(timer);
+        this.pendingInfoWrite = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const timer = globalThis.setTimeout(() => finish(new Error('电芯设置回复超时，设备可能已保存，请重新读取确认')), 3000);
+      this.pendingInfoWrite = { field, resolve: () => finish(), reject: finish };
+    });
+    const payload = new Uint8Array([field, ...new TextEncoder().encode(value)]);
+    const write = this.queueWrite([[0x09, payload]]);
+    void write.catch((error: Error) => this.pendingInfoWrite?.reject(error));
+    await Promise.all([response, write]);
+    const identity = await this.identify(3000);
+    if ((field === 0 ? identity.model : identity.code) !== value)
+      throw new Error('电芯设置回读不匹配，请重新读取确认');
+  }
+
   identify(timeoutMs: number, signal?: AbortSignal): Promise<BatteryIdentity> {
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 0x7fffffff)
       return Promise.reject(new RangeError('回复超时必须大于 0 ms'));
@@ -532,6 +562,11 @@ export class BatterySerialSession {
 
   private receive(command: number, payload: Uint8Array) {
     if (!this.active) return;
+    if (command === 0x09 && payload.length === 2 && this.pendingInfoWrite?.field === payload[0]) {
+      if (payload[1] === 0) this.pendingInfoWrite.resolve();
+      else this.pendingInfoWrite.reject(new Error(`电芯设置失败，结果码：${payload[1]}`));
+      return;
+    }
     const valid = this.applyFrame(command, payload);
     if (!valid) {
       if (command === 0x0a && this.historyStarted) this.historyInvalid = true;

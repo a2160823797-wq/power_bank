@@ -2,6 +2,7 @@ import { useState } from 'react';
 import BatteryMonitor from '@/components/battery-monitor';
 import FirmwareUpdater from '@/components/firmware-updater';
 import NtcSimulator from '@/components/ntc-simulator';
+import CellSettings from '@/components/cell-settings';
 import {
   getWorkspaceView,
   setWorkspaceView,
@@ -20,6 +21,7 @@ const t = {
   battery: '新国标',
   temperature: '温度模拟',
   upgrade: '固件升级',
+  cellSettings: '电芯设置',
 };
 
 export default function Home() {
@@ -80,6 +82,14 @@ function Workspace() {
             </button>
             <button
               type="button"
+              aria-pressed={view === 'cell-settings'}
+              disabled={connectionBusy}
+              onClick={() => changeView('cell-settings')}
+            >
+              {t.cellSettings}
+            </button>
+            <button
+              type="button"
               aria-pressed={view === 'temperature'}
               disabled={connectionBusy}
               onClick={() => changeView('temperature')}
@@ -108,6 +118,9 @@ function Workspace() {
         </section>
       </div>
       <FirmwareUpdater active={view === 'upgrade'} />
+      <div hidden={view !== 'cell-settings'}>
+        <CellSettings />
+      </div>
     </main>
   );
 }

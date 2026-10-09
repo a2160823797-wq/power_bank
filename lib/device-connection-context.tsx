@@ -45,6 +45,7 @@ interface DeviceConnection {
   battery: BatteryState;
   connect: (automatic?: boolean, manual?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
+  setCellInfo: (field: 0 | 1, value: string) => Promise<void>;
   setTemperature: (
     temperature: number,
     timeoutMs: number,
@@ -341,6 +342,16 @@ export function DeviceConnectionProvider({
         connect,
         disconnect,
         withUpgrade,
+        async setCellInfo(field, value) {
+          const session = sessionRef.current;
+          if (!session?.isOpen || busyRef.current) throw new Error('请先连接设备');
+          markBusy(true);
+          try {
+            await session.setCellInfo(field, value);
+          } finally {
+            markBusy(false);
+          }
+        },
         setTemperature(temperature, timeoutMs, signal) {
           const session = sessionRef.current;
           if (!session?.isOpen || busyRef.current)

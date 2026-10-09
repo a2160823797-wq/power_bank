@@ -15,6 +15,32 @@
   .battery-dashboard > * {
     min-width: 0;
   }
+  .cell-settings-content {
+    max-width: 640px;
+  }
+  .cell-settings-description {
+    margin-block: 12px;
+    color: var(--muted-foreground);
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .cell-settings-fields {
+    display: grid;
+    gap: 16px;
+    margin-block: 0;
+  }
+  .cell-settings-fields > div {
+    display: grid;
+    gap: 8px;
+  }
+  .cell-settings-fields input {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--background);
+    color: var(--foreground);
+  }
   .battery-metrics {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -141,6 +141,10 @@ export class DeviceSerialSession {
     return this.battery!.requestHistory();
   }
 
+  setCellInfo(field: 0 | 1, value: string) {
+    return this.battery!.setCellInfo(field, value);
+  }
+
   setTemperature(temperature: number, timeoutMs: number, signal?: AbortSignal) {
     if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
     return this.ntc!.setTemperature(temperature, timeoutMs, signal);
