@@ -17,7 +17,7 @@ import {
 
 const t = {
   navigation: '功能导航',
-  battery: '电池监测',
+  battery: '新国标',
   temperature: '温度模拟',
   upgrade: '固件升级',
 };
