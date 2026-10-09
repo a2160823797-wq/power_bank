@@ -71,7 +71,7 @@ function EmptyValue() {
 }
 
 export default function BatteryMonitor() {
-  const { connected, battery } = useDeviceConnection();
+  const { battery } = useDeviceConnection();
 
   const visibleCellCount = battery.cellCount ?? 2;
   const visibleRecords = selectSafetyRecords(battery.records);
@@ -98,7 +98,6 @@ export default function BatteryMonitor() {
     <section
       className="battery-content"
       aria-label={text.monitoring}
-      hidden={!connected}
     >
       <div className="battery-dashboard">
         <section
@@ -119,7 +118,7 @@ export default function BatteryMonitor() {
                 {battery.temperatureC === null ? (
                   <EmptyValue />
                 ) : (
-                  battery.temperatureC.toFixed(0)
+                  battery.temperatureC.toFixed(1)
                 )}
                 <span>°C</span>
               </p>

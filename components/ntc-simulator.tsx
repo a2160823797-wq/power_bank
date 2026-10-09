@@ -101,8 +101,6 @@ export default function NtcSimulator() {
     sendTemperature(cur_temperature);
   }
 
-  if (!connected) return null;
-
   return (
     <section className="ntc-panel" aria-labelledby="ntc-title">
       <h2 id="ntc-title">温度模拟</h2>
@@ -112,7 +110,7 @@ export default function NtcSimulator() {
           className="ntc-temperature-input"
           type="text"
           inputMode="numeric"
-          disabled={connectionBusy}
+          disabled={!connected || connectionBusy}
           value={temperatureInput}
           style={{ width: `${Math.max(temperatureInput.length, 1)}ch` }}
           aria-label="设定温度"
@@ -134,7 +132,7 @@ export default function NtcSimulator() {
         min={NTC_MIN_TEMPERATURE}
         max={NTC_MAX_TEMPERATURE}
         step="1"
-        disabled={connectionBusy}
+        disabled={!connected || connectionBusy}
         value={temperature}
         aria-label="设定温度"
         onChange={(e) => {
