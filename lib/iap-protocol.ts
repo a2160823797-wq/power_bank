@@ -363,7 +363,6 @@ export class IapSerialSession {
       state: state as BootState,
       size: view.getUint32(8, true),
       crc: view.getUint32(12, true),
-      optionCrc32: payload.length >= 20 ? view.getUint32(16, true) : null,
     };
   }
 
