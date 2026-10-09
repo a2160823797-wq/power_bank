@@ -2,7 +2,7 @@ import { crc8, type SerialPortLike } from './iap-protocol';
 
 const BEIJING_OFFSET_SECONDS = 8 * 60 * 60;
 const COMMAND_INTERVAL_MS = 8;
-const QUERY_INTERVAL_MS = 100;
+const QUERY_INTERVAL_MS = 1000;
 const MAX_PAYLOAD = 512;
 const SAFETY_RECORD_TYPES = [
   'overvoltage-1', 'overvoltage-2', 'overvoltage-3', 'overvoltage-4',
