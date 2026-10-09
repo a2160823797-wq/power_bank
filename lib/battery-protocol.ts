@@ -74,19 +74,6 @@ export function batteryFrame(
   return frame;
 }
 
-function supportedLength(command: number, length: number) {
-  switch (command & 0x7f) {
-    case 0x02:
-      return length >= 2 && length <= 256;
-    case 0x08:
-      return length >= 4 && length <= MAX_PAYLOAD;
-    case 0x0a:
-      return length === 3 || length === 8;
-    default:
-      return length <= MAX_PAYLOAD;
-  }
-}
-
 // 按外层帧边界隔离 IAP/NTC 数据，载荷中的 AA BB 不进入监测通道。
 export class BatteryFrameParser {
   private bytes: number[] = [];
@@ -137,12 +124,7 @@ export class BatteryFrameParser {
       if (this.bytes.length < 5) return;
       const command = this.bytes[2];
       const length = this.bytes[3] | (this.bytes[4] << 8);
-      if (!supportedLength(command, length)) {
-        this.onInvalid();
-        this.bytes.shift();
-        continue;
-      }
-      if (!this.possiblePayload(command & 0x7f, length)) {
+      if (length > MAX_PAYLOAD) {
         this.onInvalid();
         this.bytes.shift();
         continue;
@@ -164,53 +146,6 @@ export class BatteryFrameParser {
     }
   }
 
-  private possiblePayload(command: number, length: number) {
-    if (this.bytes.length < 6) return true;
-    const type = this.bytes[5];
-    if (command === 0x02) {
-      if (type <= 3) return length === 3;
-      if (type === 13) return length === 2;
-      if (type === 15 || type === 16) return this.possibleAscii(6, length + 5);
-      if (type === 0x12 && this.bytes.length >= 7) {
-        const count = this.bytes[6];
-        return count >= 1 && count <= 16 && length === count * 2 + 2;
-      }
-    } else if (command === 0x08) {
-      const modelLength = type;
-      if (
-        modelLength === 0 ||
-        length < modelLength + 3 ||
-        length > modelLength + 257
-      )
-        return false;
-      const codeOffset = modelLength + 6;
-      if (!this.possibleAscii(6, codeOffset)) return false;
-      if (this.bytes.length > codeOffset) {
-        const codeLength = this.bytes[codeOffset];
-        return (
-          codeLength > 0 &&
-          length === modelLength + codeLength + 2 &&
-          this.possibleAscii(codeOffset + 1, length + 5)
-        );
-      }
-    } else if (command === 0x0a) {
-      return type === 1
-        ? length === 8
-        : (type === 0 || type === 2) && length === 3;
-    }
-    return true;
-  }
-
-  private possibleAscii(start: number, end: number) {
-    for (
-      let index = start;
-      index < Math.min(end, this.bytes.length);
-      index += 1
-    ) {
-      if (this.bytes[index] < 0x20 || this.bytes[index] > 0x7e) return false;
-    }
-    return true;
-  }
 }
 
 function ascii(bytes: Uint8Array) {
