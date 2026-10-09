@@ -340,7 +340,7 @@ export class IapSerialSession {
 
   private async readBootOption() {
     const payload = await this.command(1);
-    if (payload.length !== 16) throw new Error('设备升级状态回复长度错误');
+    if (payload.length < 16) throw new Error('设备升级状态回复长度不足');
     const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
     const state = view.getUint32(4, true);
     if (state > BootState.App) throw new Error('设备返回未知 Boot 状态');
