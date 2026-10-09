@@ -2,6 +2,7 @@ import { crc8, type SerialPortLike } from './iap-protocol';
 
 const BEIJING_OFFSET_SECONDS = 8 * 60 * 60;
 const COMMAND_INTERVAL_MS = 8;
+const QUERY_INTERVAL_MS = 100;
 const MAX_PAYLOAD = 512;
 const SAFETY_RECORD_TYPES = [
   'overvoltage-1', 'overvoltage-2', 'overvoltage-3', 'overvoltage-4',
@@ -271,6 +272,7 @@ export class BatterySerialSession {
   private historyStarted = false;
   private historyInvalid = false;
   private pendingIdentity: PendingIdentity | null = null;
+  private query_timer: ReturnType<typeof globalThis.setTimeout> | null = null;
   private readonly parser: BatteryFrameParser;
 
   constructor(
@@ -320,6 +322,7 @@ export class BatterySerialSession {
     this.active = true;
     this.emit();
     this.readTask = this.readLoop();
+    void this.queryBattery();
   }
 
   close() {
@@ -331,6 +334,8 @@ export class BatterySerialSession {
     if (this.closeTask) return this.closeTask;
     this.closing = true;
     this.active = false;
+    if (this.query_timer !== null) globalThis.clearTimeout(this.query_timer);
+    this.query_timer = null;
     this.pendingIdentity?.reject(new Error('串口已关闭'));
     this.cancelWriteDelay?.();
     this.parser.clear();
@@ -409,6 +414,25 @@ export class BatterySerialSession {
       cellVoltagesMv: [...this.state.cellVoltagesMv],
       records: this.state.records.map((record) => ({ ...record })),
     });
+  }
+
+  private async queryBattery() {
+    const cur_query_time = Date.now();
+    try {
+      await this.queueWrite([
+        [0x02, new Uint8Array([0x00])],
+        [0x02, new Uint8Array([0x01])],
+        [0x02, new Uint8Array([0x12])],
+      ]);
+      if (this.active) {
+        this.query_timer = globalThis.setTimeout(() => {
+          this.query_timer = null;
+          void this.queryBattery();
+        }, Math.max(0, QUERY_INTERVAL_MS - (Date.now() - cur_query_time)));
+      }
+    } catch {
+      // 写入失败由通信队列统一关闭会话并报告
+    }
   }
 
   requestHistory() {
