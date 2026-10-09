@@ -1,4 +1,10 @@
 @layer components {
+  .temperature-content {
+    width: 100%;
+    max-width: 640px;
+    margin-inline: auto;
+    padding-block: 24px 40px;
+  }
   .ntc-panel h2 {
     font-size: 1rem;
     font-weight: 600;

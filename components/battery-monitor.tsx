@@ -1,6 +1,5 @@
 import { selectSafetyRecords, type SafetyRecord } from '@/lib/battery-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
-import NtcSimulator from './ntc-simulator';
 
 const text = {
   monitoring: '电池监测',
@@ -152,7 +151,6 @@ export default function BatteryMonitor() {
             </div>
           </dl>
         </section>
-        <NtcSimulator />
       </div>
 
       <section

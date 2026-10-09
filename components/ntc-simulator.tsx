@@ -63,6 +63,9 @@ export default function NtcSimulator() {
             throw new Error(`${cur_temperature}℃ 设置失败，检查设备后重试`);
           }
         }
+        if (mountedRef.current && !controller.signal.aborted) {
+          setMessage(`${cur_temperature}℃ 设置成功`);
+        }
       } catch (reason) {
         if (
           mountedRef.current &&
