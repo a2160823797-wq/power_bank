@@ -30,7 +30,7 @@ const t = {
     connecting: '正在连接设备',
     preparing: '正在进入升级模式',
     writing: '正在传输固件',
-    verifying: '正在确认接收完成',
+    verifying: '正在核对升级状态、长度和 CRC32',
     success: '升级完成',
     error: '升级失败',
   } satisfies Record<Stage, string>,

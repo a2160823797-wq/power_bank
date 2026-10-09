@@ -12,6 +12,17 @@ const ACK = 0x06;
 const NAK = 0x15;
 const CAN = 0x18;
 const CRC_REQUEST = 0x43;
+const APP_READY_KEY = 0xaa55bbdd;
+
+enum BootState {
+  Ready = 0,
+  AppError,
+  AppRequestUpgrade,
+  AppUpdate,
+  AppUpdateReady,
+  JumpApp,
+  App,
+}
 
 interface SerialReader {
   read(): Promise<{ value?: Uint8Array; done: boolean }>;
@@ -314,12 +325,31 @@ export class IapSerialSession {
   private async enterUpgradeMode(onStage: StageCallback) {
     onStage('handshake');
     await this.identify();
-    const request = await this.command(2, new Uint8Array([2]));
-    if (request[0] !== 1) {
-      const update = await this.command(2, new Uint8Array([3]));
-      if (update[0] !== 1) throw new Error('设备拒绝进入升级模式');
-    }
+    const option = await this.readBootOption();
+    if (option.state === BootState.AppUpdate) return;
+    const nextState = option.state === BootState.App
+      ? BootState.AppRequestUpgrade
+      : BootState.AppUpdate;
+    const response = await this.command(2, new Uint8Array([nextState]));
+    if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
     await this.waitControl(CRC_REQUEST, this.config.handshakeTimeoutMs);
+    const entered = await this.readBootOption();
+    if (entered.state !== BootState.AppUpdate)
+      throw new Error('设备未进入升级状态');
+  }
+
+  private async readBootOption() {
+    const payload = await this.command(1);
+    if (payload.length !== 16) throw new Error('设备升级状态回复长度错误');
+    const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+    const state = view.getUint32(4, true);
+    if (state > BootState.App) throw new Error('设备返回未知 Boot 状态');
+    return {
+      key: view.getUint32(0, true),
+      state: state as BootState,
+      size: view.getUint32(8, true),
+      crc: view.getUint32(12, true),
+    };
   }
 
   async upgrade(
@@ -384,6 +414,15 @@ export class IapSerialSession {
       '结束文件头',
     );
     this.ensureActive();
+    const completed = await this.readBootOption();
+    if (
+      ![BootState.AppUpdateReady, BootState.Ready, BootState.App].includes(completed.state) ||
+      completed.key !== APP_READY_KEY
+    ) throw new Error('设备未确认固件升级完成');
+    if (completed.size !== firmware.length)
+      throw new Error('设备确认的固件长度不匹配');
+    if (completed.crc !== crc32(firmware))
+      throw new Error('设备确认的固件 CRC32 不匹配');
     onProgress(100, firmware.length);
   }
 
