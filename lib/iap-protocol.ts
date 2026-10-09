@@ -332,17 +332,22 @@ export class IapSerialSession {
   private async enterUpgradeMode(onStage: StageCallback) {
     onStage('handshake');
     await this.identify();
-    const option = await this.readBootOption();
-    if (option.state === BootState.AppUpdate) return;
-    const nextState = option.state === BootState.App
-      ? BootState.AppRequestUpgrade
-      : BootState.AppUpdate;
-    const response = await this.command(2, new Uint8Array([nextState]));
-    if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
-    await this.waitControl(CRC_REQUEST, this.config.handshakeTimeoutMs);
-    const entered = await this.readBootOption();
-    if (entered.state !== BootState.AppUpdate)
-      throw new Error('设备未进入升级状态');
+    let option = await this.readBootOption();
+    if (option.state === BootState.App) {
+      const response = await this.command(2, new Uint8Array([BootState.AppRequestUpgrade]));
+      if (response[0] !== 1) throw new Error('设备拒绝请求升级');
+      await this.delay(300);
+      option = await this.readBootOptionWithRetry();
+      if (option.state === BootState.App) throw new Error('设备仍处于 APP 状态');
+    }
+    if (option.state !== BootState.AppUpdate) {
+      const response = await this.command(2, new Uint8Array([BootState.AppUpdate]));
+      if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
+      await this.delay(300);
+      option = await this.readBootOptionWithRetry();
+      if (option.state !== BootState.AppUpdate)
+        throw new Error('设备未进入升级状态');
+    }
   }
 
   private async readBootOption(timeoutMs = this.config.responseTimeoutMs) {
@@ -356,6 +361,14 @@ export class IapSerialSession {
       state: state as BootState,
       size: view.getUint32(8, true),
       crc: view.getUint32(12, true),
+      optionCrc32: payload.length >= 20 ? view.getUint32(16, true) : null,
+      fileProtocol: payload.length >= 24 ? view.getUint32(20, true) : null,
+      fileSize: payload.length >= 28 ? view.getUint32(24, true) : null,
+      fileName: payload.length >= 32
+        ? new TextDecoder().decode(payload.subarray(
+          32, 32 + Math.min(view.getUint32(28, true), 64),
+        ))
+        : '',
     };
   }
 
@@ -426,9 +439,9 @@ export class IapSerialSession {
     );
     this.ensureActive();
     await this.delay(800);
-    const completed = await this.readCompletedOption();
+    const completed = await this.readBootOptionWithRetry();
     if (
-      ![BootState.AppUpdateReady, BootState.Ready].includes(completed.state) ||
+      ![BootState.AppUpdateReady, BootState.Ready, BootState.JumpApp, BootState.App].includes(completed.state) ||
       completed.key !== APP_READY_KEY
     ) throw new Error('设备未确认固件升级完成');
     if (completed.size !== firmware.length)
@@ -438,7 +451,7 @@ export class IapSerialSession {
     onProgress(100, firmware.length);
   }
 
-  private async readCompletedOption() {
+  private async readBootOptionWithRetry() {
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await this.readBootOption(2200);
