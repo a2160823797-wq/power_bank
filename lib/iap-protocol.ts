@@ -244,7 +244,15 @@ export class IapSerialSession {
         payload[i] = await this.inbox.take(deadline - Date.now());
       const receivedCrc = await this.inbox.take(deadline - Date.now());
       const checked = new Uint8Array([command, low, high, ...payload]);
-      if (command === expectedCommand && receivedCrc === crc8(checked))
+      const ackCompat =
+        command === 0x00 &&
+        length === 1 &&
+        payload[0] === 0x01 &&
+        receivedCrc === 0x2f;
+      if (
+        (command & 0x7f) === (expectedCommand & 0x7f) &&
+        (receivedCrc === crc8(checked) || ackCompat)
+      )
         return payload;
     }
     throw new Error('未收到有效的 IAP 命令响应');
