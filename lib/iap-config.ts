@@ -1,5 +1,6 @@
 export const IAP_BAUD_RATE = 1500000;
 export const IAP_PACKET_SIZE = 1024;
+export const IAP_APP_MAX_SIZE = 0x9e00;
 
 export interface IapConfig {
   responseTimeoutMs: number;
@@ -10,5 +11,5 @@ export interface IapConfig {
 export const DEFAULT_CONFIG: IapConfig = {
   responseTimeoutMs: 5000,
   handshakeTimeoutMs: 30000,
-  maxAttempts: 10,
+  maxAttempts: 5,
 };

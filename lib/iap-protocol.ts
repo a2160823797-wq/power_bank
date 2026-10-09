@@ -2,6 +2,7 @@ import {
   DEFAULT_CONFIG,
   IAP_BAUD_RATE,
   IAP_PACKET_SIZE,
+  IAP_APP_MAX_SIZE,
   type IapConfig,
 } from './iap-config';
 
@@ -144,7 +145,7 @@ export function crc32(data: Uint8Array, initial = 0) {
 
 export function validateFirmware(data: Uint8Array) {
   if (data.length === 0) return '固件文件不能为空';
-  if (data.length > 0xffffffff) return '固件大小超出 32 位长度范围';
+  if (data.length > IAP_APP_MAX_SIZE) return '固件大小不能超过 40448 字节';
   return null;
 }
 
@@ -313,6 +314,7 @@ export class IapSerialSession {
           throw new Error(
             `${label} 连续 ${this.config.maxAttempts} 次尝试失败`,
           );
+        await this.delay(80);
       }
     }
   }
@@ -320,6 +322,11 @@ export class IapSerialSession {
   async identify(timeoutMs = this.config.responseTimeoutMs) {
     const ack = await this.command(0, new Uint8Array(), timeoutMs);
     if (ack[0] !== 1) throw new Error('设备在线确认失败');
+  }
+
+  private async delay(ms: number) {
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, ms));
+    this.ensureActive();
   }
 
   private async enterUpgradeMode(onStage: StageCallback) {
@@ -338,8 +345,8 @@ export class IapSerialSession {
       throw new Error('设备未进入升级状态');
   }
 
-  private async readBootOption() {
-    const payload = await this.command(1);
+  private async readBootOption(timeoutMs = this.config.responseTimeoutMs) {
+    const payload = await this.command(1, new Uint8Array(), timeoutMs);
     if (payload.length < 16) throw new Error('设备升级状态回复长度不足');
     const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
     const state = view.getUint32(4, true);
@@ -388,6 +395,7 @@ export class IapSerialSession {
     const totalBlocks = Math.ceil(firmware.length / IAP_PACKET_SIZE);
     for (let index = 0; index < totalBlocks; index += 1) {
       this.ensureActive();
+      if (index > 0) await this.delay(80);
       const payload = new Uint8Array(IAP_PACKET_SIZE);
       payload.fill(0x1a);
       const offset = index * IAP_PACKET_SIZE;
@@ -401,22 +409,26 @@ export class IapSerialSession {
     }
 
     onStage('verifying');
+    await this.delay(80);
     const eotResponse = await this.sendPacketWithRetry(
       new Uint8Array([EOT]),
       '传输结束',
       [ACK, NAK],
     );
-    if (eotResponse === NAK)
+    if (eotResponse === NAK) {
+      await this.delay(80);
       await this.sendPacketWithRetry(new Uint8Array([EOT]), '传输结束');
+    }
     await this.waitControl(CRC_REQUEST);
     await this.sendPacketWithRetry(
       ymodemPacket(SOH, 0, new Uint8Array(128)),
       '结束文件头',
     );
     this.ensureActive();
-    const completed = await this.readBootOption();
+    await this.delay(800);
+    const completed = await this.readCompletedOption();
     if (
-      ![BootState.AppUpdateReady, BootState.Ready, BootState.App].includes(completed.state) ||
+      ![BootState.AppUpdateReady, BootState.Ready].includes(completed.state) ||
       completed.key !== APP_READY_KEY
     ) throw new Error('设备未确认固件升级完成');
     if (completed.size !== firmware.length)
@@ -424,6 +436,19 @@ export class IapSerialSession {
     if (completed.crc !== crc32(firmware))
       throw new Error('设备确认的固件 CRC32 不匹配');
     onProgress(100, firmware.length);
+  }
+
+  private async readCompletedOption() {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await this.readBootOption(2200);
+      } catch (error) {
+        this.ensureActive();
+        if (!(error instanceof RetryableError) || attempt >= this.config.maxAttempts)
+          throw error;
+        await this.delay(350);
+      }
+    }
   }
 
   async cancel() {
