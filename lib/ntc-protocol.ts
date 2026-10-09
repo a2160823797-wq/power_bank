@@ -88,7 +88,7 @@ export class NtcFrameParser {
       if (this.bytes[1] === 0xbb || this.bytes[1] === 0x55) {
         if (this.bytes.length < 5) break;
         const length = this.bytes[3] | (this.bytes[4] << 8);
-        const maxPayload = this.bytes[1] === 0xbb ? 512 : 128;
+        const maxPayload = this.bytes[1] === 0xbb ? 1024 : 128;
         if (length > maxPayload) {
           this.bytes.shift();
           continue;
