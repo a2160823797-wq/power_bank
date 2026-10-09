@@ -1,4 +1,5 @@
 import {
+  IAP_COMMAND_TIMEOUT_MS,
   DEFAULT_CONFIG,
   IAP_BAUD_RATE,
   IAP_PACKET_SIZE,
@@ -273,7 +274,7 @@ export class IapSerialSession {
   private async command(
     command: number,
     payload: Uint8Array = new Uint8Array(),
-    timeoutMs = this.config.responseTimeoutMs,
+    timeoutMs = IAP_COMMAND_TIMEOUT_MS,
   ) {
     await this.write(commandFrame(command, payload));
     return this.readCommand(command, timeoutMs);
@@ -319,7 +320,7 @@ export class IapSerialSession {
     }
   }
 
-  async identify(timeoutMs = this.config.responseTimeoutMs) {
+  async identify(timeoutMs = IAP_COMMAND_TIMEOUT_MS) {
     const ack = await this.command(0, new Uint8Array(), timeoutMs);
     if (ack[0] !== 1) throw new Error('设备在线确认失败');
   }
@@ -334,8 +335,12 @@ export class IapSerialSession {
     await this.identify();
     let option = await this.readBootOption();
     if (option.state === BootState.App) {
-      const response = await this.command(2, new Uint8Array([BootState.AppRequestUpgrade]));
-      if (response[0] !== 1) throw new Error('设备拒绝请求升级');
+      try {
+        await this.command(2, new Uint8Array([BootState.AppRequestUpgrade]));
+      } catch (error) {
+        if (!(error instanceof RetryableError)) throw error;
+        this.ensureActive();
+      }
       await this.delay(300);
       option = await this.readBootOptionWithRetry();
       if (option.state === BootState.App) throw new Error('设备仍处于 APP 状态');
@@ -344,13 +349,10 @@ export class IapSerialSession {
       const response = await this.command(2, new Uint8Array([BootState.AppUpdate]));
       if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
       await this.delay(300);
-      option = await this.readBootOptionWithRetry();
-      if (option.state !== BootState.AppUpdate)
-        throw new Error('设备未进入升级状态');
     }
   }
 
-  private async readBootOption(timeoutMs = this.config.responseTimeoutMs) {
+  private async readBootOption(timeoutMs = IAP_COMMAND_TIMEOUT_MS) {
     const payload = await this.command(1, new Uint8Array(), timeoutMs);
     if (payload.length < 16) throw new Error('设备升级状态回复长度不足');
     const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
@@ -362,13 +364,6 @@ export class IapSerialSession {
       size: view.getUint32(8, true),
       crc: view.getUint32(12, true),
       optionCrc32: payload.length >= 20 ? view.getUint32(16, true) : null,
-      fileProtocol: payload.length >= 24 ? view.getUint32(20, true) : null,
-      fileSize: payload.length >= 28 ? view.getUint32(24, true) : null,
-      fileName: payload.length >= 32
-        ? new TextDecoder().decode(payload.subarray(
-          32, 32 + Math.min(view.getUint32(28, true), 64),
-        ))
-        : '',
     };
   }
 
@@ -454,7 +449,7 @@ export class IapSerialSession {
   private async readBootOptionWithRetry() {
     for (let attempt = 1; ; attempt += 1) {
       try {
-        return await this.readBootOption(2200);
+        return await this.readBootOption();
       } catch (error) {
         this.ensureActive();
         if (!(error instanceof RetryableError) || attempt >= this.config.maxAttempts)

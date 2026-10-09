@@ -1,6 +1,7 @@
 export const IAP_BAUD_RATE = 1500000;
 export const IAP_PACKET_SIZE = 1024;
 export const IAP_APP_MAX_SIZE = 0x9e00;
+export const IAP_COMMAND_TIMEOUT_MS = 2200;
 
 export interface IapConfig {
   responseTimeoutMs: number;
