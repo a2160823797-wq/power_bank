@@ -416,16 +416,36 @@ export class IapSerialSession {
 
     onStage('verifying');
     await this.delay(80);
-    const eotResponse = await this.sendPacketWithRetry(
-      new Uint8Array([EOT]),
+    const eot = new Uint8Array([EOT]);
+    let eotResponse = await this.sendPacketWithRetry(
+      eot,
       '传输结束',
       [ACK, NAK],
     );
-    if (eotResponse === NAK) {
-      await this.delay(80);
-      await this.sendPacketWithRetry(new Uint8Array([EOT]), '传输结束');
+    let endReady = false;
+    for (let attempt = 0; attempt < this.config.maxAttempts; attempt += 1) {
+      if (eotResponse === NAK) {
+        await this.delay(80);
+        eotResponse = await this.sendPacketWithRetry(
+          eot,
+          '传输结束',
+          [ACK, NAK],
+        );
+      }
+      if (eotResponse === ACK) {
+        try {
+          eotResponse = await this.waitControl([CRC_REQUEST, NAK]);
+        } catch (error) {
+          if (!(error instanceof RetryableError)) throw error;
+          eotResponse = NAK;
+        }
+      }
+      if (eotResponse === CRC_REQUEST) {
+        endReady = true;
+        break;
+      }
     }
-    await this.waitControl(CRC_REQUEST);
+    if (!endReady) throw new Error('设备未确认传输结束');
     await this.sendPacketWithRetry(
       ymodemPacket(SOH, 0, new Uint8Array(128)),
       '结束文件头',

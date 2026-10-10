@@ -50,9 +50,15 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
   );
   const validationError = firmware ? validateFirmware(firmware.data) : null;
   const displayedError = error || validationError;
+  const showProgress = running || stage === 'success';
   const showTransferStatus =
-    ['writing', 'verifying'].includes(stage) ||
-    (stage === 'error' && progress > 0);
+    showProgress || (stage === 'error' && progress > 0);
+  let overallProgress = 0;
+  if (stage === 'preparing') overallProgress = 5;
+  else if (stage === 'writing')
+    overallProgress = 10 + Math.round(progress * 0.8);
+  else if (stage === 'verifying') overallProgress = 95;
+  else if (stage === 'success') overallProgress = 100;
 
   async function loadFile(file?: File) {
     if (!file || runningRef.current) return;
@@ -183,12 +189,24 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
           )}
         </span>
       </button>
-      {(running || showTransferStatus || stage === 'success') && (
+      {showTransferStatus && (
         <div className="transfer-status" data-state={stage}>
-          <output className="transfer-caption" aria-live="polite">
-            {t.stages[stage]}
-            {stage === 'writing' && ` ${Math.round(progress)}%`}
-          </output>
+          {showProgress ? (
+            <div className="transfer-progress">
+              <progress
+                max={100}
+                value={overallProgress}
+                aria-label={t.stages[stage]}
+              />
+              <span className="transfer-percent" aria-hidden="true">
+                {overallProgress}%
+              </span>
+            </div>
+          ) : (
+            <output className="transfer-caption" aria-live="polite">
+              {t.stages[stage]}
+            </output>
+          )}
         </div>
       )}
       {displayedError && (

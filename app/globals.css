@@ -287,6 +287,49 @@
   .transfer-status {
     margin-top: 24px;
   }
+  .transfer-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .transfer-progress progress {
+    flex: 1;
+    min-width: 0;
+    height: 8px;
+    overflow: hidden;
+    appearance: none;
+    border: 0;
+    border-radius: 999px;
+    background: #303034;
+  }
+  .transfer-progress progress::-webkit-progress-bar {
+    border-radius: 999px;
+    background: #303034;
+  }
+  .transfer-progress progress::-webkit-progress-value {
+    border-radius: 999px;
+    background: var(--primary);
+  }
+  .transfer-progress progress::-moz-progress-bar {
+    border-radius: 999px;
+    background: var(--primary);
+  }
+  .transfer-status[data-state='success'] .transfer-progress progress::-webkit-progress-value {
+    background: var(--success);
+  }
+  .transfer-status[data-state='success'] .transfer-progress progress::-moz-progress-bar {
+    background: var(--success);
+  }
+  .transfer-percent {
+    min-width: 4ch;
+    color: var(--muted-foreground);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .transfer-status[data-state='success'] .transfer-percent {
+    color: var(--success);
+  }
   .transfer-caption {
     display: block;
     color: var(--muted-foreground);
