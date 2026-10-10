@@ -62,10 +62,6 @@ const DeviceContext = createContext<DeviceConnection | null>(null);
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
-function clearBatteryData(cur_state: BatteryState): BatteryState {
-  return { ...createBatteryState(), cellCount: cur_state.cellCount };
-}
-
 export function DeviceConnectionProvider({
   children,
 }: {
@@ -105,7 +101,7 @@ export function DeviceConnectionProvider({
     markBusy(true);
     if (mountedRef.current) {
       setConnection('disconnecting');
-      setBattery(clearBatteryData);
+      setBattery(createBatteryState);
       setError('');
     }
     const operation = (async () => {
@@ -247,7 +243,7 @@ export function DeviceConnectionProvider({
             message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
-          setBattery(clearBatteryData);
+          setBattery(createBatteryState);
           if (
             releaseFailed ||
             !(

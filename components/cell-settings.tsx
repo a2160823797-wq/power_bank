@@ -1,13 +1,20 @@
 import { useState } from 'react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
+const DEFAULT_BATTERY_MODEL = '146074MN100';
+const DEFAULT_BATTERY_CODE = 'MLSHCEG6G-010623900';
+
+function getCellInfoValue(value: string | null, defaultValue: string) {
+  return !value || value === '-' || value === 'UNSET' ? defaultValue : value;
+}
+
 export default function CellSettings() {
   const { connected, connectionBusy, battery, setCellInfo } = useDeviceConnection();
   const [model, setModel] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const cur_model = model ?? (battery.batteryModel === '-' || battery.batteryModel === 'UNSET' ? '' : battery.batteryModel ?? '');
-  const cur_code = code ?? (battery.batteryCode === '-' || battery.batteryCode === 'UNSET' ? '' : battery.batteryCode ?? '');
+  const cur_model = model ?? getCellInfoValue(battery.batteryModel, DEFAULT_BATTERY_MODEL);
+  const cur_code = code ?? getCellInfoValue(battery.batteryCode, DEFAULT_BATTERY_CODE);
 
   async function save() {
     const modelValue = cur_model.trim().toUpperCase();
@@ -34,10 +41,12 @@ export default function CellSettings() {
       <section className="battery-panel">
         <div className="cell-settings-fields">
           <div>
-            <input aria-label="型号" value={cur_model} disabled={connectionBusy} maxLength={24} onChange={(event) => setModel(event.currentTarget.value)} placeholder="型号" />
+            <label className="battery-field-label" htmlFor="cell-model">型号</label>
+            <input id="cell-model" value={cur_model} disabled={connectionBusy} maxLength={24} onChange={(event) => setModel(event.currentTarget.value)} />
           </div>
           <div>
-            <input aria-label="编码" value={cur_code} disabled={connectionBusy} maxLength={24} onChange={(event) => setCode(event.currentTarget.value)} placeholder="编码" />
+            <label className="battery-field-label" htmlFor="cell-code">编码</label>
+            <input id="cell-code" value={cur_code} disabled={connectionBusy} maxLength={24} onChange={(event) => setCode(event.currentTarget.value)} />
             <button className="primary-action" aria-label="写入型号和编码" type="button" disabled={!connected || connectionBusy || !cur_model.trim() || !cur_code.trim()} onClick={() => void save()}>写入</button>
           </div>
         </div>
