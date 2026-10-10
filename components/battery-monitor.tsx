@@ -72,7 +72,7 @@ function EmptyValue() {
 export default function BatteryMonitor() {
   const { battery } = useDeviceConnection();
 
-  const visibleCellCount = battery.cellCount ?? 2;
+  const visibleCellCount = battery.cellCount ?? 1;
   const visibleRecords = selectSafetyRecords(battery.records);
   const recordsByType = new Map<SafetyRecord['type'], SafetyRecord[]>();
   for (const record of visibleRecords) {
