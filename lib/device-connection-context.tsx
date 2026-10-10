@@ -328,7 +328,16 @@ export function DeviceConnectionProvider({
         }
       }
       if (!selectedPort) {
-        selectedPort = await serial.requestPort();
+        try {
+          selectedPort = await serial.requestPort();
+        } catch (reason) {
+          if (
+            reason instanceof DOMException &&
+            ['NotFoundError', 'AbortError'].includes(reason.name)
+          )
+            throw new Error('升级已取消');
+          throw reason;
+        }
         await verifyUpgradePort(selectedPort, session);
       }
       const runOperation = async (port: SerialPortLike) => {
