@@ -61,6 +61,10 @@ function formatVoltage(millivolts: number | null) {
   return millivolts === null ? <EmptyValue /> : (millivolts / 1000).toFixed(3);
 }
 
+function formatCellInfo(value: string | null) {
+  return !value || value === 'UNSET' || value === '-' ? <EmptyValue /> : value;
+}
+
 function EmptyValue() {
   return (
     <span className="battery-empty-value" role="img" aria-label={text.noData}>
@@ -143,11 +147,11 @@ export default function BatteryMonitor() {
           <dl className="battery-identity" aria-label={text.cellInfo}>
             <div className="battery-identity-field">
               <dt>{text.model}</dt>
-              <dd>{battery.batteryModel || <EmptyValue />}</dd>
+              <dd>{formatCellInfo(battery.batteryModel)}</dd>
             </div>
             <div className="battery-identity-field">
               <dt>{text.code}</dt>
-              <dd>{battery.batteryCode || <EmptyValue />}</dd>
+              <dd>{formatCellInfo(battery.batteryCode)}</dd>
             </div>
           </dl>
         </section>

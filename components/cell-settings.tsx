@@ -6,8 +6,8 @@ export default function CellSettings() {
   const [model, setModel] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const cur_model = model ?? (battery.batteryModel === '-' ? '' : battery.batteryModel ?? '');
-  const cur_code = code ?? (battery.batteryCode === '-' ? '' : battery.batteryCode ?? '');
+  const cur_model = model ?? (battery.batteryModel === '-' || battery.batteryModel === 'UNSET' ? '' : battery.batteryModel ?? '');
+  const cur_code = code ?? (battery.batteryCode === '-' || battery.batteryCode === 'UNSET' ? '' : battery.batteryCode ?? '');
 
   async function save() {
     const modelValue = cur_model.trim().toUpperCase();
