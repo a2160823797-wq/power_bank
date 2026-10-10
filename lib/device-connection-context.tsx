@@ -3,7 +3,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useRef,
   useState,
   type ReactNode,
@@ -43,7 +42,7 @@ interface DeviceConnection {
   manualSelection: boolean;
   error: string;
   battery: BatteryState;
-  connect: (automatic?: boolean, manual?: boolean) => Promise<void>;
+  connect: (manual?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   setCellInfo: (field: 0 | 1, value: string) => Promise<void>;
   setTemperature: (
@@ -149,7 +148,7 @@ export function DeviceConnectionProvider({
     return () => globalThis.clearTimeout(report_timer);
   }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
 
-  async function connect(automatic = false, manual = false) {
+  async function connect(manual = false) {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
@@ -184,9 +183,8 @@ export function DeviceConnectionProvider({
         const preferred = selectedPort
           ? null
           : await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
-        if (automatic && !preferred) return;
         let result;
-        if (selectedPort || (!ports.length && !automatic)) {
+        if (selectedPort || !ports.length) {
           const port = selectedPort ?? await serial.requestPort();
           result = await connectSelectedDevice(
             port,
@@ -271,21 +269,15 @@ export function DeviceConnectionProvider({
     if (connectTaskRef.current === operation) connectTaskRef.current = null;
   }
 
-  const connectLastDevice = useEffectEvent(async () => {
-    await connectTaskRef.current;
-    if (mountedRef.current) await connect(true);
-  });
-
   useEffect(() => {
     mountedRef.current = true;
-    if (serialSupported) void connectLastDevice();
     return () => {
       mountedRef.current = false;
       connectControllerRef.current?.abort();
       void sessionRef.current?.close().catch(() => undefined);
       void upgradeProbeRef.current?.close().catch(() => undefined);
     };
-  }, [serialSupported]);
+  }, []);
 
   async function withUpgrade<T>(
     operation: (port: SerialPortLike) => Promise<T>,

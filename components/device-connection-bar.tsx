@@ -30,7 +30,7 @@ export function DeviceConnectionButton({ hidden = false }: { hidden?: boolean })
         void (
           connected || connection === 'release-error'
             ? disconnect()
-            : connect(false, manualSelection)
+            : connect(manualSelection)
         ).catch(() => undefined);
       }}
     >
