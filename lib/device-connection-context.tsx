@@ -62,10 +62,8 @@ const DeviceContext = createContext<DeviceConnection | null>(null);
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
-function markHistoryIncomplete(cur_state: BatteryState): BatteryState {
-  return cur_state.historyStatus === 'receiving'
-    ? { ...cur_state, historyStatus: 'incomplete' }
-    : cur_state;
+function clearBatteryData(cur_state: BatteryState): BatteryState {
+  return { ...createBatteryState(), cellCount: cur_state.cellCount };
 }
 
 export function DeviceConnectionProvider({
@@ -107,6 +105,7 @@ export function DeviceConnectionProvider({
     markBusy(true);
     if (mountedRef.current) {
       setConnection('disconnecting');
+      setBattery(clearBatteryData);
       setError('');
     }
     const operation = (async () => {
@@ -114,7 +113,6 @@ export function DeviceConnectionProvider({
         await releaseSession(session);
         if (mountedRef.current) {
           setConnection('disconnected');
-          setBattery(markHistoryIncomplete);
         }
       } catch (reason) {
         if (mountedRef.current) {
@@ -153,6 +151,7 @@ export function DeviceConnectionProvider({
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
+    setBattery(createBatteryState);
     setError('');
     const controller = new AbortController();
     connectControllerRef.current = controller;
@@ -248,7 +247,7 @@ export function DeviceConnectionProvider({
             message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
-          setBattery(markHistoryIncomplete);
+          setBattery(clearBatteryData);
           if (
             releaseFailed ||
             !(
