@@ -244,9 +244,10 @@
   .file-drop {
     display: flex;
     width: 100%;
-    min-height: 116px;
+    min-height: 64px;
     align-items: center;
-    text-align: left;
+    justify-content: center;
+    text-align: center;
     transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease;
   }
   .file-drop:not(:disabled):hover,

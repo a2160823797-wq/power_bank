@@ -19,8 +19,6 @@ const t = {
   replaceFirmware: '更换固件',
   readingFirmware: '读取固件…',
   pleaseWait: '请稍候',
-  clickToReplace: '点击更换',
-  dropFirmware: '也可将 .bin 文件拖到这里',
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
   startUpgrade: '升级',
   restartUpgrade: '升级',
@@ -180,14 +178,8 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
                 ? firmware.file.name
                 : t.chooseFirmware}
           </span>
-          {(!firmware || !running) && (
-            <span className="file-description">
-              {loadingFile
-                ? t.pleaseWait
-                : firmware
-                  ? t.clickToReplace
-                  : t.dropFirmware}
-            </span>
+          {loadingFile && (
+            <span className="file-description">{t.pleaseWait}</span>
           )}
         </span>
       </button>
