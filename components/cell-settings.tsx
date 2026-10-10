@@ -54,7 +54,7 @@ export default function CellSettings() {
         <div className="cell-settings-fields">
           <div>
             <label className="battery-field-label" htmlFor="cell-model">型号</label>
-            <input id="cell-model" value={cur_model} disabled={connectionBusy || writing} maxLength={24} onChange={(event) => {
+            <input id="cell-model" value={cur_model} disabled={!connected || connectionBusy || writing} maxLength={24} onChange={(event) => {
               setModel(event.currentTarget.value);
               setProgress(null);
               setMessage('');
@@ -62,12 +62,12 @@ export default function CellSettings() {
           </div>
           <div>
             <label className="battery-field-label" htmlFor="cell-code">编码</label>
-            <input id="cell-code" value={cur_code} disabled={connectionBusy || writing} maxLength={24} onChange={(event) => {
+            <input id="cell-code" value={cur_code} disabled={!connected || connectionBusy || writing} maxLength={24} onChange={(event) => {
               setCode(event.currentTarget.value);
               setProgress(null);
               setMessage('');
             }} />
-            <button className="primary-action" aria-label="写入型号和编码" type="button" disabled={!connected || connectionBusy || writing || !cur_model.trim() || !cur_code.trim()} onClick={() => void save()}>写入</button>
+            {connected && <button className="primary-action" aria-label="写入型号和编码" type="button" disabled={connectionBusy || writing || !cur_model.trim() || !cur_code.trim()} onClick={() => void save()}>写入</button>}
           </div>
         </div>
         {progress !== null && (
