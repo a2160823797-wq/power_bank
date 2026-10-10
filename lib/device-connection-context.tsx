@@ -26,6 +26,7 @@ import { getSavedSerialPort, rememberSerialPort } from './serial-device';
 import {
   verifyUpgradePort,
   UpgradePortReleaseError,
+  discoverUpgradePort,
 } from './upgrade-connection';
 
 type Connection =
@@ -56,6 +57,7 @@ interface DeviceConnection {
 }
 
 const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
+const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-successful-serial-port';
 const DeviceContext = createContext<DeviceConnection | null>(null);
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
@@ -84,6 +86,7 @@ export function DeviceConnectionProvider({
   const connectControllerRef = useRef<AbortController | null>(null);
   const closeTaskRef = useRef<Promise<void> | null>(null);
   const upgradeProbeRef = useRef<IapSerialSession | null>(null);
+  const lastUpgradePortRef = useRef<SerialPortLike | null>(null);
 
   const markBusy = useCallback((value: boolean) => {
     busyRef.current = value;
@@ -297,11 +300,44 @@ export function DeviceConnectionProvider({
         upgradeProbeRef.current = null;
       }
       const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      const selectedPort = await serial.requestPort();
-      await verifyUpgradePort(selectedPort, session);
+      let selectedPort = lastUpgradePortRef.current;
+      if (selectedPort) {
+        try {
+          await verifyUpgradePort(selectedPort, session);
+        } catch (reason) {
+          if (reason instanceof UpgradePortReleaseError) throw reason;
+          selectedPort = null;
+          lastUpgradePortRef.current = null;
+        }
+      }
+      if (!selectedPort) {
+        let hasSavedPort = false;
+        try {
+          hasSavedPort = Boolean(localStorage.getItem(LAST_UPGRADE_PORT_KEY));
+        } catch {}
+        if (hasSavedPort) {
+          const ports = await serial.getPorts();
+          const preferredPort = await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
+          try {
+            selectedPort = await discoverUpgradePort(ports, preferredPort, session);
+          } catch (reason) {
+            if (!(reason instanceof DeviceSelectionError)) throw reason;
+          }
+        }
+      }
+      if (!selectedPort) {
+        selectedPort = await serial.requestPort();
+        await verifyUpgradePort(selectedPort, session);
+      }
+      const runOperation = async (port: SerialPortLike) => {
+        const result = await operation(port);
+        lastUpgradePortRef.current = port;
+        rememberSerialPort(LAST_UPGRADE_PORT_KEY, port);
+        return result;
+      };
       if (session && selectedPort === session.port)
-        return await session.withUpgrade(operation);
-      return await operation(selectedPort);
+        return await session.withUpgrade(runOperation);
+      return await runOperation(selectedPort);
     } catch (reason) {
       if (reason instanceof UpgradePortReleaseError)
         upgradeProbeRef.current = reason.session;

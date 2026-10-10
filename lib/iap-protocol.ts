@@ -345,11 +345,10 @@ export class IapSerialSession {
       option = await this.readBootOptionWithRetry();
       if (option.state === BootState.App) throw new Error('设备仍处于 APP 状态');
     }
-    if (option.state !== BootState.AppUpdate) {
-      const response = await this.command(2, new Uint8Array([BootState.AppUpdate]));
-      if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
-      await this.delay(300);
-    }
+    // 每次升级都重置接收状态，避免上次未完成的传输阻止新参数
+    const response = await this.command(2, new Uint8Array([BootState.AppUpdate]));
+    if (response[0] !== 1) throw new Error('设备拒绝进入升级模式');
+    await this.waitControl(CRC_REQUEST, this.config.handshakeTimeoutMs);
   }
 
   private async readBootOption(timeoutMs = IAP_COMMAND_TIMEOUT_MS) {
@@ -381,7 +380,7 @@ export class IapSerialSession {
     transferInfo.set(u32le(firmware.length), 0);
     transferInfo.set(u32le(crc32(firmware)), 4);
     const accepted = await this.command(3, transferInfo);
-    if (accepted[0] !== 1) throw new Error('Bootloader 拒绝了固件大小或 CRC32');
+    if (accepted[0] !== 1) throw new Error('Bootloader 未准备好接收或固件大小超限');
     await this.waitControl(CRC_REQUEST);
 
     const headerData = new Uint8Array(128);
