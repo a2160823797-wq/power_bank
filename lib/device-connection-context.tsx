@@ -24,7 +24,6 @@ import {
 } from './device-connection';
 import { getSavedSerialPort, rememberSerialPort } from './serial-device';
 import {
-  discoverUpgradePort,
   verifyUpgradePort,
   UpgradePortReleaseError,
 } from './upgrade-connection';
@@ -57,7 +56,6 @@ interface DeviceConnection {
 }
 
 const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
-const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-serial-port';
 const DeviceContext = createContext<DeviceConnection | null>(null);
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
@@ -299,27 +297,14 @@ export function DeviceConnectionProvider({
         upgradeProbeRef.current = null;
       }
       const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      const ports = await serial.getPorts();
-      let selectedPort: SerialPortLike | null;
-      if (!ports.length) {
-        selectedPort = await serial.requestPort();
-        await verifyUpgradePort(selectedPort, session);
-      } else {
-        const preferred = session?.port ??
-          await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
-        selectedPort = await discoverUpgradePort(ports, preferred, session);
-        if (!selectedPort) throw new Error('未找到升级设备');
-      }
-      rememberSerialPort(LAST_UPGRADE_PORT_KEY, selectedPort);
+      const selectedPort = await serial.requestPort();
+      await verifyUpgradePort(selectedPort, session);
       if (session && selectedPort === session.port)
         return await session.withUpgrade(operation);
       return await operation(selectedPort);
     } catch (reason) {
       if (reason instanceof UpgradePortReleaseError)
         upgradeProbeRef.current = reason.session;
-      if (reason instanceof DeviceSelectionError) {
-        throw new Error('发现多台升级设备');
-      }
       if (reason instanceof DOMException && reason.name === 'SecurityError') {
         throw new Error('需要授权升级设备');
       }
