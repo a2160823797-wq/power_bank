@@ -290,6 +290,8 @@ export function DeviceConnectionProvider({
   async function withUpgrade<T>(
     operation: (port: SerialPortLike) => Promise<T>,
   ): Promise<T> {
+    if (connectTaskRef.current) await connectTaskRef.current;
+    if (closeTaskRef.current) await closeTaskRef.current;
     if (busyRef.current) throw new Error('设备连接正在切换，请稍后重试');
     const session = sessionRef.current;
     if (session && !session.isOpen) throw new Error('请先重试断开设备连接');

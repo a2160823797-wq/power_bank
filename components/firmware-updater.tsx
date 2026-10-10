@@ -37,8 +37,7 @@ const t = {
 };
 
 export default function FirmwareUpdater({ active }: { active: boolean }) {
-  const { serialSupported, connectionBusy, withUpgrade } =
-    useDeviceConnection();
+  const { serialSupported, withUpgrade } = useDeviceConnection();
   const [loadingFile, setLoadingFile] = useState(false);
   const runningRef = useRef(false);
   const fileLoadRef = useRef(0);
@@ -87,8 +86,7 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
   }
 
   async function startUpgrade() {
-    if (!firmware || runningRef.current || loadingFile || connectionBusy)
-      return;
+    if (!firmware || runningRef.current || loadingFile) return;
     if (validationError) {
       setError(validationError);
       setStage('error');
@@ -215,10 +213,7 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
             type="button"
             className="primary-action"
             disabled={
-              connectionBusy ||
-              loadingFile ||
-              !serialSupported ||
-              Boolean(validationError)
+              loadingFile || !serialSupported || Boolean(validationError)
             }
             onClick={startUpgrade}
           >
