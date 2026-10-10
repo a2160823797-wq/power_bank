@@ -1,7 +1,7 @@
 import { Loader2 } from 'lucide-react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
-export function DeviceConnectionButton() {
+export function DeviceConnectionButton({ hidden = false }: { hidden?: boolean }) {
   const {
     serialSupported,
     connection,
@@ -21,9 +21,11 @@ export function DeviceConnectionButton() {
 
   return (
     <button
-      className={`device-button ${connection === 'disconnected' || connection === 'connecting' ? 'device-button-primary' : 'device-button-secondary'}`}
+      className={`device-button ${connection === 'disconnected' || connection === 'connecting' ? 'device-button-primary' : 'device-button-secondary'}${hidden ? ' is-hidden' : ''}`}
       type="button"
-      disabled={connectionBusy || !serialSupported}
+      disabled={hidden || connectionBusy || !serialSupported}
+      aria-hidden={hidden}
+      tabIndex={hidden ? -1 : undefined}
       onClick={() => {
         void (
           connected || connection === 'release-error'

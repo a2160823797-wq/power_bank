@@ -105,7 +105,7 @@ function Workspace() {
               {t.upgrade}
             </button>
           </nav>
-          {view !== 'upgrade' && <DeviceConnectionButton />}
+          <DeviceConnectionButton hidden={view === 'upgrade'} />
         </div>
       </header>
       {view !== 'upgrade' && <DeviceConnectionBar />}
