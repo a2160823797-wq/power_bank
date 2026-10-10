@@ -22,8 +22,8 @@ const t = {
   clickToReplace: '点击更换',
   dropFirmware: '也可将 .bin 文件拖到这里',
   browserNote: '请使用电脑上的 Chrome 或 Edge 连接设备。',
-  startUpgrade: '一键升级',
-  restartUpgrade: '再次升级',
+  startUpgrade: '升级',
+  restartUpgrade: '升级',
   stages: {
     idle: '等待固件',
     ready: '准备就绪',
