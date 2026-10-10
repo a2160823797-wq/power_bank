@@ -62,9 +62,6 @@ export default function NtcSimulator() {
             throw new Error(`${cur_temperature}℃ 设置失败，检查设备后重试`);
           }
         }
-        if (mountedRef.current && !controller.signal.aborted) {
-          setMessage(`${cur_temperature}℃ 设置成功`);
-        }
       } catch (reason) {
         if (
           mountedRef.current &&
@@ -88,8 +85,7 @@ export default function NtcSimulator() {
   }
 
   return (
-    <section className="ntc-panel" aria-labelledby="ntc-title">
-      <h2 id="ntc-title">温度模拟</h2>
+    <section className="ntc-panel" aria-label="温度模拟">
       {message && <output className="ntc-alert">{message}</output>}
       <div className="ntc-temperature">
         <span>{temperature}</span>

@@ -1,23 +1,21 @@
 @layer components {
   .temperature-content {
     width: 100%;
-    max-width: 640px;
+    max-width: 520px;
     margin-inline: auto;
-    padding-block: 24px 40px;
+    padding-block: clamp(84px, 13vh, 136px) 56px;
   }
-  .ntc-panel h2 {
-    font-size: 1rem;
-    font-weight: 600;
-    line-height: 1.5;
+  .temperature-content .ntc-panel {
+    padding: 34px 36px 30px;
   }
   .ntc-temperature {
     display: flex;
     justify-content: center;
     align-items: baseline;
     gap: 8px;
-    margin: 16px 0;
+    margin: 0 0 24px;
     color: var(--foreground);
-    font: 600 2.5rem/1.15 var(--font-sans);
+    font: 600 3.75rem/1.1 var(--font-sans);
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
   }
@@ -50,5 +48,19 @@
   .ntc-alert {
     display: block;
     margin-bottom: 12px;
+  }
+}
+
+@media (max-width: 520px) {
+  @layer components {
+    .temperature-content {
+      padding-block: 64px 40px;
+    }
+    .temperature-content .ntc-panel {
+      padding: 28px 24px 24px;
+    }
+    .ntc-temperature {
+      font-size: 3.25rem;
+    }
   }
 }
