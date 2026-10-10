@@ -12,6 +12,17 @@ export interface NtcReply {
   receivedAt: number;
 }
 
+interface NtcIdentityReply {
+  nonce: number;
+}
+
+export class NtcIdentityTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`设备未响应 NTC 识别请求（${timeoutMs} ms）`);
+    this.name = 'NtcIdentityTimeoutError';
+  }
+}
+
 type Reader = NonNullable<SerialPortLike['readable']> extends {
   getReader(): infer T;
 } ? T : never;
@@ -64,9 +75,17 @@ export function encodeSetTemperature(temperature: number) {
   return frame;
 }
 
+function encodeIdentify(nonce: number) {
+  const frame = new Uint8Array([0xaa, 0x02, nonce & 0xff, nonce >> 8, 0]);
+  frame[4] = crc8(frame.subarray(0, 4));
+  return frame;
+}
+
 /** Each push accepts arbitrary serial chunks; only complete, valid replies are returned. */
 export class NtcFrameParser {
   private bytes: number[] = [];
+
+  constructor(private readonly onIdentity: (reply: NtcIdentityReply) => void = () => {}) {}
 
   reset() {
     this.bytes.length = 0;
@@ -108,7 +127,16 @@ export class NtcFrameParser {
         continue;
       }
       this.bytes.splice(0, 12);
-      if (frame[1] === 0x82) continue; // 丢弃完整识别回复，避免帧内数据被误认成温度回复
+      if (frame[1] === 0x82) {
+        if (
+          frame[2] === 0x4e && frame[3] === 0x54 &&
+          frame[4] === 0x43 && frame[5] === 0x31 &&
+          frame[6] === 1 && frame[7] === 0 && frame[10] === 0
+        ) {
+          this.onIdentity({ nonce: frame[8] | (frame[9] << 8) });
+        }
+        continue;
+      }
       const view = new DataView(frame.buffer);
       const reply: NtcReply = {
         temperature: view.getInt16(2, true),
@@ -145,6 +173,12 @@ interface PendingReply {
   reject: (error: Error) => void;
 }
 
+interface PendingIdentity {
+  nonce: number;
+  resolve(): void;
+  reject(error: Error): void;
+}
+
 export class NtcSerialSession {
   private port: SerialPortLike;
   private onDisconnect?: (error: Error) => void;
@@ -156,13 +190,16 @@ export class NtcSerialSession {
   private writeTask: Promise<void> | null = null;
   private closeTask: Promise<void> | null = null;
   private pending: PendingReply | null = null;
+  private pendingIdentity: PendingIdentity | null = null;
   private opened = false;
   private state: 'closed' | 'opening' | 'open' | 'closing' = 'closed';
 
   constructor(port: SerialPortLike, onDisconnect?: (error: Error) => void) {
     this.port = port;
     this.onDisconnect = onDisconnect;
-    this.parser = new NtcFrameParser();
+    this.parser = new NtcFrameParser((reply) => {
+      if (this.pendingIdentity?.nonce === reply.nonce) this.pendingIdentity.resolve();
+    });
   }
 
   get isOpen() {
@@ -224,6 +261,7 @@ export class NtcSerialSession {
       if (this.reader === reader) this.reader = null;
       if (failure) {
         this.pending?.reject(failure);
+        this.pendingIdentity?.reject(failure);
         // Start cleanup without awaiting our own read task.
         void this.close().catch(() => {});
         this.onDisconnect?.(failure);
@@ -235,6 +273,55 @@ export class NtcSerialSession {
     if (this.pending?.matches(reply)) {
       this.pending.resolve(reply);
     }
+  }
+
+  async identify(timeoutMs: number, signal?: AbortSignal): Promise<void> {
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 0x7fffffff)
+      throw new RangeError('回复超时必须大于 0 ms');
+    if (signal?.aborted) throw abortError();
+    if (this.state !== 'open' || !this.port.writable) throw new Error('串口未连接');
+    if (this.pending || this.pendingIdentity || this.writeTask)
+      throw new Error('上一条 NTC 命令尚未结束');
+    const nonce = crypto.getRandomValues(new Uint16Array(1))[0];
+    const response = new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        if (this.pendingIdentity !== pending) return;
+        this.pendingIdentity = null;
+        globalThis.clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
+        if (error) reject(error);
+        else resolve();
+      };
+      const pending: PendingIdentity = {
+        nonce,
+        resolve: () => finish(),
+        reject: (error) => finish(error),
+      };
+      const onAbort = () => pending.reject(abortError());
+      const timer = globalThis.setTimeout(
+        () => pending.reject(new NtcIdentityTimeoutError(timeoutMs)), timeoutMs,
+      );
+      this.pendingIdentity = pending;
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+    const writeTask = (async () => {
+      const writer = this.port.writable!.getWriter() as Writer;
+      this.writer = writer;
+      try {
+        await writer.write(encodeIdentify(nonce));
+      } finally {
+        writer.releaseLock();
+        if (this.writer === writer) this.writer = null;
+      }
+    })();
+    this.writeTask = writeTask;
+    void writeTask.then(() => {
+      if (this.writeTask === writeTask) this.writeTask = null;
+    }, (error: unknown) => {
+      if (this.writeTask === writeTask) this.writeTask = null;
+      this.pendingIdentity?.reject(asError(error));
+    });
+    await Promise.all([response, writeTask]);
   }
 
   /**
@@ -266,7 +353,8 @@ export class NtcSerialSession {
     }
     if (signal?.aborted) throw abortError();
     if (this.state !== 'open' || !this.port.writable) throw new Error('串口未连接');
-    if (this.pending || this.writeTask) throw new Error('上一条温度命令尚未结束');
+    if (this.pending || this.pendingIdentity || this.writeTask)
+      throw new Error('上一条 NTC 命令尚未结束');
     const response = new Promise<NtcReply>((resolve, reject) => {
       const finish = (reply?: NtcReply, error?: Error) => {
         if (this.pending !== pending) return;
@@ -313,6 +401,7 @@ export class NtcSerialSession {
     if (this.state === 'closed') return Promise.resolve();
     this.state = 'closing';
     this.pending?.reject(reason);
+    this.pendingIdentity?.reject(reason);
     const task = (async () => {
       try {
         await this.openTask?.catch(() => {});

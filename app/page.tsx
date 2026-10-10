@@ -34,13 +34,15 @@ export default function Home() {
 
 function Workspace() {
   const [view, setView] = useState(getWorkspaceView);
-  const { connectionBusy } = useDeviceConnection();
+  const { connectionBusy, connected, deviceKind, disconnect } = useDeviceConnection();
 
-  function changeView(nextView: WorkspaceView) {
-    if (!connectionBusy) {
-      setView(nextView);
-      setWorkspaceView(nextView);
+  async function changeView(nextView: WorkspaceView) {
+    if (connectionBusy) return;
+    if (connected && nextView !== 'upgrade' && deviceKind !== (nextView === 'temperature' ? 'ntc' : 'battery')) {
+      await disconnect();
     }
+    setView(nextView);
+    setWorkspaceView(nextView);
   }
 
   return (
@@ -76,7 +78,7 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'battery'}
               disabled={connectionBusy}
-              onClick={() => changeView('battery')}
+              onClick={() => void changeView('battery').catch(() => undefined)}
             >
               {t.battery}
             </button>
@@ -84,7 +86,7 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'cell-settings'}
               disabled={connectionBusy}
-              onClick={() => changeView('cell-settings')}
+              onClick={() => void changeView('cell-settings').catch(() => undefined)}
             >
               {t.cellSettings}
             </button>
@@ -92,7 +94,7 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'temperature'}
               disabled={connectionBusy}
-              onClick={() => changeView('temperature')}
+              onClick={() => void changeView('temperature').catch(() => undefined)}
             >
               {t.temperature}
             </button>
@@ -100,12 +102,12 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'upgrade'}
               disabled={connectionBusy}
-              onClick={() => changeView('upgrade')}
+              onClick={() => void changeView('upgrade').catch(() => undefined)}
             >
               {t.upgrade}
             </button>
           </nav>
-          <DeviceConnectionButton hidden={view === 'upgrade'} />
+          <DeviceConnectionButton hidden={view === 'upgrade'} kind={view === 'temperature' ? 'ntc' : 'battery'} />
         </div>
       </header>
       {view !== 'upgrade' && <DeviceConnectionBar />}

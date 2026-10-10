@@ -9,6 +9,8 @@ export interface DeviceCallbacks {
   onDisconnect?(session: DeviceSerialSession, error: Error): void;
 }
 
+export type DeviceKind = 'battery' | 'ntc';
+
 /** 一个物理串口，两种协议；页面只使用本会话，不单独持有串口锁。 */
 export class DeviceSerialSession {
   private readonly transport: SharedSerialTransport;
@@ -29,6 +31,7 @@ export class DeviceSerialSession {
   constructor(
     readonly port: SerialPortLike,
     private readonly callbacks: DeviceCallbacks = {},
+    readonly kind: DeviceKind = 'battery',
   ) {
     this.transport = new SharedSerialTransport(port, (error) =>
       this.fail(error),
@@ -39,7 +42,7 @@ export class DeviceSerialSession {
     return (
       this.state === 'open' &&
       this.transport.isOpen &&
-      this.battery?.isOpen === true &&
+      (this.kind === 'ntc' || this.battery?.isOpen === true) &&
       this.ntc?.isOpen === true
     );
   }
@@ -63,7 +66,7 @@ export class DeviceSerialSession {
   }
 
   private async openProtocols() {
-    const battery = new BatterySerialSession(this.transport.createChannel(), {
+    const battery = this.kind === 'battery' ? new BatterySerialSession(this.transport.createChannel(), {
       onData: (state) => {
         if (
           this.battery === battery &&
@@ -83,7 +86,7 @@ export class DeviceSerialSession {
       onDisconnect: () => {
         if (this.battery === battery) this.fail(new Error('设备已断开连接'));
       },
-    });
+    }) : null;
     const ntc = new NtcSerialSession(
       this.transport.createChannel(),
       (error) => {
@@ -92,7 +95,7 @@ export class DeviceSerialSession {
     );
     this.battery = battery;
     this.ntc = ntc;
-    await battery.open();
+    await battery?.open();
     await ntc.open();
   }
 
@@ -122,7 +125,9 @@ export class DeviceSerialSession {
 
   identify(timeoutMs: number, signal?: AbortSignal) {
     if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
-    return this.battery!.identify(timeoutMs, signal);
+    return this.kind === 'ntc'
+      ? this.ntc!.identify(timeoutMs, signal)
+      : this.battery!.identify(timeoutMs, signal);
   }
 
   async identifyUpgrade(timeoutMs = 500) {
@@ -137,11 +142,12 @@ export class DeviceSerialSession {
   }
 
   requestHistory() {
-    if (!this.isOpen) return Promise.reject(new Error('请先连接设备'));
+    if (!this.isOpen || !this.battery) return Promise.reject(new Error('请先连接电池设备'));
     return this.battery!.requestHistory();
   }
 
   setCellInfo(field: 0 | 1, value: string) {
+    if (!this.isOpen || !this.battery) return Promise.reject(new Error('请先连接电池设备'));
     return this.battery!.setCellInfo(field, value);
   }
 
@@ -208,7 +214,7 @@ export class DeviceSerialSession {
           throw new Error('设备已断开连接');
         this.state = 'open';
         await this.identify(500);
-        await this.requestHistory();
+        if (this.kind === 'battery') await this.requestHistory();
       } else {
         throw new Error('设备已断开连接');
       }

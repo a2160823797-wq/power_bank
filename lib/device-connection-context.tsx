@@ -12,9 +12,9 @@ import {
   BatteryIdentityTimeoutError,
   type BatteryState,
 } from './battery-protocol';
-import type { NtcReply } from './ntc-protocol';
+import { NtcIdentityTimeoutError, type NtcReply } from './ntc-protocol';
 import type { IapSerialSession, SerialApi, SerialPortLike } from './iap-protocol';
-import { DeviceSerialSession } from './device-session';
+import { DeviceSerialSession, type DeviceKind } from './device-session';
 import {
   connectSelectedDevice,
   discoverDevice,
@@ -39,10 +39,11 @@ interface DeviceConnection {
   connection: Connection;
   connectionBusy: boolean;
   connected: boolean;
+  deviceKind: DeviceKind | null;
   manualSelection: boolean;
   error: string;
   battery: BatteryState;
-  connect: (manual?: boolean) => Promise<void>;
+  connect: (manual?: boolean, kind?: DeviceKind) => Promise<void>;
   disconnect: () => Promise<void>;
   setCellInfo: (field: 0 | 1, value: string) => Promise<void>;
   setTemperature: (
@@ -134,7 +135,7 @@ export function DeviceConnectionProvider({
   }, [markBusy, releaseSession]);
 
   useEffect(() => {
-    if (connection !== 'connected' || connectionBusy) return;
+    if (connection !== 'connected' || connectionBusy || sessionRef.current?.kind !== 'battery') return;
     const session = sessionRef.current;
     const report_timer = globalThis.setTimeout(() => {
       if (
@@ -148,7 +149,7 @@ export function DeviceConnectionProvider({
     return () => globalThis.clearTimeout(report_timer);
   }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
 
-  async function connect(manual = false) {
+  async function connect(manual = false, kind: DeviceKind = 'battery') {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
@@ -190,6 +191,7 @@ export function DeviceConnectionProvider({
             port,
             controller.signal,
             callbacks,
+            kind,
           );
         } else {
           result = await discoverDevice(
@@ -197,6 +199,7 @@ export function DeviceConnectionProvider({
             preferred,
             controller.signal,
             callbacks,
+            kind,
           );
         }
         if (!result) {
@@ -216,7 +219,7 @@ export function DeviceConnectionProvider({
         setConnection('connected');
         setManualSelection(false);
         rememberSerialPort(LAST_PORT_KEY, result.port);
-        await session.requestHistory();
+        if (kind === 'battery') await session.requestHistory();
       } catch (reason) {
         let releaseFailed = false;
         let message = messageOf(reason);
@@ -241,7 +244,7 @@ export function DeviceConnectionProvider({
             setManualSelection(true);
           if (reason instanceof DeviceSelectionError) {
             message = '找到多台设备';
-          } else if (reason instanceof BatteryIdentityTimeoutError) {
+          } else if (reason instanceof BatteryIdentityTimeoutError || reason instanceof NtcIdentityTimeoutError) {
             message = '设备未响应';
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
@@ -360,6 +363,7 @@ export function DeviceConnectionProvider({
         connection,
         connectionBusy,
         connected: connection === 'connected',
+        deviceKind: sessionRef.current?.kind ?? null,
         manualSelection,
         error,
         battery,
