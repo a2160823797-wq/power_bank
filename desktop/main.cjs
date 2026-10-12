@@ -94,7 +94,7 @@ function selectSerialPort(portList, requestContents, callback) {
     maximizable: false,
     title: '选择串口',
     icon: path.join(__dirname, 'icon.png'),
-    backgroundColor: '#0e1117',
+    backgroundColor: '#0c1524',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
@@ -212,7 +212,7 @@ function createWindow() {
     minHeight: 650,
     title: 'PowerBank',
     icon: path.join(__dirname, 'icon.png'),
-    backgroundColor: '#0e1117',
+    backgroundColor: '#0c1524',
     show: false,
     autoHideMenuBar: true,
     webPreferences: {

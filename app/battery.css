@@ -36,10 +36,19 @@
   .cell-settings-fields input {
     width: 100%;
     padding: 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--background);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    background: var(--surface-inset);
+    box-shadow: var(--shadow-control);
     color: var(--foreground);
+    transition:
+      border-color 180ms ease,
+      box-shadow 180ms ease;
+  }
+  .cell-settings-fields input:focus-visible {
+    border-color: var(--ring);
+    outline: 2px solid var(--ring);
+    outline-offset: 3px;
   }
   .battery-metrics {
     display: grid;
@@ -183,8 +192,20 @@
   .battery-record-group {
     min-width: 0;
     padding-inline: 16px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background:
+      linear-gradient(145deg, rgb(255 255 255 / 2%), transparent 60%),
+      var(--surface-inset);
+    box-shadow: var(--shadow-control);
+    transition:
+      background-color 180ms ease,
+      border-color 180ms ease;
+  }
+  .battery-record-group:hover,
+  .battery-record-group[open] {
+    border-color: var(--glass-highlight);
+    background-color: var(--surface-hover);
   }
   .battery-record-group > summary {
     display: flex;
@@ -208,6 +229,7 @@
     border-right: 1.5px solid currentColor;
     border-bottom: 1.5px solid currentColor;
     transform: rotate(-45deg);
+    transition: transform 180ms ease;
   }
   .battery-record-group[open] > summary::before {
     transform: rotate(45deg);

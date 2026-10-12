@@ -1,8 +1,8 @@
 :root {
   color-scheme: dark;
   font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
-  background: #0e1117;
-  color: #e5e7eb;
+  background: #0c1524;
+  color: #f5f7fb;
 }
 
 * {
@@ -11,6 +11,9 @@
 
 body {
   margin: 0;
+  min-height: 100vh;
+  background: url('./assets/pro-black-wallpaper.jpg') center / cover #0c1524;
+  text-shadow: 0 1px 2px rgb(0 15 35 / 45%);
 }
 
 main {
@@ -26,7 +29,7 @@ h1 {
 .description {
   margin: 8px 0 20px;
   font-size: 13px;
-  color: #9ca3af;
+  color: #e1eaf5;
 }
 
 #ports {
@@ -43,24 +46,45 @@ h1 {
   gap: 12px;
   min-height: 59px;
   padding: 10px 13px;
-  border: 1px solid #2a303c;
-  border-radius: 9px;
-  background: #161b24;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 16px;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 4%),
+    rgb(255 255 255 / 2%)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 16%),
+    0 5px 14px rgb(0 0 0 / 6%);
+  backdrop-filter: blur(2px) saturate(110%);
+  -webkit-backdrop-filter: blur(2px) saturate(110%);
   cursor: pointer;
 }
 
 .port:hover {
-  border-color: #525b6b;
+  border-color: rgb(255 255 255 / 45%);
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 6%),
+    rgb(255 255 255 / 3%)
+  );
 }
 
 .port:has(input:checked) {
-  border-color: #6366f1;
-  background: #1d2140;
+  border-color: rgb(164 214 255 / 80%);
+  background: linear-gradient(
+    145deg,
+    rgb(10 132 255 / 7%),
+    rgb(10 132 255 / 3%)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 22%),
+    0 5px 14px rgb(0 0 0 / 6%);
 }
 
 .port input {
   margin: 0;
-  accent-color: #818cf8;
+  accent-color: #0a84ff;
 }
 
 .port-info {
@@ -80,7 +104,7 @@ h1 {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: #9ca3af;
+  color: #e1eaf5;
 }
 
 #empty {
@@ -89,13 +113,13 @@ h1 {
   left: 28px;
   right: 28px;
   text-align: center;
-  color: #9ca3af;
+  color: #e1eaf5;
   font-size: 13px;
 }
 
 .status {
   margin: 13px 0 18px;
-  color: #9ca3af;
+  color: #e1eaf5;
   font-size: 12px;
 }
 
@@ -108,34 +132,63 @@ h1 {
 button {
   min-width: 78px;
   padding: 8px 18px;
-  border: 1px solid #374151;
-  border-radius: 8px;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 9999px;
   font: inherit;
   font-size: 13px;
-  color: #e5e7eb;
-  background: #1f2937;
+  color: #f5f7fb;
+  text-shadow: inherit;
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 4%),
+    rgb(255 255 255 / 2%)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 18%),
+    0 4px 12px rgb(0 0 0 / 6%);
+  backdrop-filter: blur(2px) saturate(110%);
+  -webkit-backdrop-filter: blur(2px) saturate(110%);
   cursor: pointer;
 }
 
 button:hover {
-  background: #303b4d;
+  border-color: rgb(255 255 255 / 48%);
+  background: linear-gradient(
+    145deg,
+    rgb(255 255 255 / 6%),
+    rgb(255 255 255 / 3%)
+  );
 }
 
 #connect {
-  border-color: #6366f1;
-  background: #6366f1;
+  border-color: rgb(164 214 255 / 75%);
+  color: #ffffff;
+  background: linear-gradient(
+    145deg,
+    rgb(10 132 255 / 7%),
+    rgb(10 132 255 / 3%)
+  );
 }
 
 #connect:hover {
-  background: #7477f5;
+  border-color: rgb(185 225 255 / 95%);
+  background: linear-gradient(
+    145deg,
+    rgb(10 132 255 / 10%),
+    rgb(10 132 255 / 4%)
+  );
 }
 
-button:disabled {
-  opacity: 0.45;
+button:disabled,
+#connect:disabled {
+  border-color: rgb(225 234 245 / 16%);
+  color: #a7b5c8;
+  background: rgb(255 255 255 / 2%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 8%);
   cursor: default;
 }
 
 :focus-visible {
-  outline: 2px solid #a5b4fc;
+  outline: 2px solid #86c5ff;
   outline-offset: 3px;
 }
