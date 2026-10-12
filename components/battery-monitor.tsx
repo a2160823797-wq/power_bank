@@ -1,3 +1,4 @@
+import { Thermometer, Zap } from 'lucide-react';
 import { selectSafetyRecords, type SafetyRecord } from '@/lib/battery-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
@@ -109,14 +110,20 @@ export default function BatteryMonitor() {
         >
           <div className="battery-metrics">
             <div className="battery-metric">
-              <p className="battery-field-label">{text.totalVoltage}</p>
+              <p className="battery-field-label">
+                <Zap aria-hidden="true" />
+                {text.totalVoltage}
+              </p>
               <p className="battery-metric-value">
                 {formatVoltage(battery.totalVoltageMv)}
                 <span>V</span>
               </p>
             </div>
             <div className="battery-metric">
-              <p className="battery-field-label">{text.temperature}</p>
+              <p className="battery-field-label">
+                <Thermometer aria-hidden="true" />
+                {text.temperature}
+              </p>
               <p className="battery-metric-value">
                 {battery.temperatureC === null ? (
                   <EmptyValue />

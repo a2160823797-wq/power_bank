@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Battery, CircuitBoard, Thermometer, Upload } from 'lucide-react';
 import BatteryMonitor from '@/components/battery-monitor';
 import FirmwareUpdater from '@/components/firmware-updater';
 import NtcSimulator from '@/components/ntc-simulator';
@@ -80,6 +81,7 @@ function Workspace() {
               disabled={connectionBusy}
               onClick={() => void changeView('battery').catch(() => undefined)}
             >
+              <Battery aria-hidden="true" />
               {t.battery}
             </button>
             <button
@@ -88,6 +90,7 @@ function Workspace() {
               disabled={connectionBusy}
               onClick={() => void changeView('cell-settings').catch(() => undefined)}
             >
+              <CircuitBoard aria-hidden="true" />
               {t.cellSettings}
             </button>
             <button
@@ -96,6 +99,7 @@ function Workspace() {
               disabled={connectionBusy}
               onClick={() => void changeView('temperature').catch(() => undefined)}
             >
+              <Thermometer aria-hidden="true" />
               {t.temperature}
             </button>
             <button
@@ -104,6 +108,7 @@ function Workspace() {
               disabled={connectionBusy}
               onClick={() => void changeView('upgrade').catch(() => undefined)}
             >
+              <Upload aria-hidden="true" />
               {t.upgrade}
             </button>
           </nav>

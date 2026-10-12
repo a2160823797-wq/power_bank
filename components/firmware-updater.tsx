@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { FileCheck2, Upload } from 'lucide-react';
 import { IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
@@ -176,6 +177,9 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
           void loadFile(event.dataTransfer.files[0]);
         }}
       >
+        <span className="file-icon" aria-hidden="true">
+          {firmware ? <FileCheck2 /> : <Upload />}
+        </span>
         <span className="file-copy">
           <span className="file-title">
             {loadingFile

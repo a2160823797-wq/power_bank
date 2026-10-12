@@ -1,4 +1,4 @@
-import { Loader2 } from 'lucide-react';
+import { Loader2, Usb } from 'lucide-react';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 import type { DeviceKind } from '@/lib/device-session';
 
@@ -35,8 +35,10 @@ export function DeviceConnectionButton({ hidden = false, kind }: { hidden?: bool
         ).catch(() => undefined);
       }}
     >
-      {connectionBusy && (
+      {connectionBusy ? (
         <Loader2 className="device-spin" aria-hidden="true" />
+      ) : (
+        <Usb aria-hidden="true" />
       )}
       {buttonText}
     </button>

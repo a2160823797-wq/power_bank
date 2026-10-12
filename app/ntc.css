@@ -7,8 +7,15 @@
   }
   .temperature-content .ntc-panel {
     padding: 34px 36px 30px;
-    border-right-color: rgb(255 255 255 / 38%);
-    border-bottom-color: rgb(255 255 255 / 32%);
+    border-right-color: rgb(255 255 255 / 28%);
+    border-bottom-color: rgb(255 255 255 / 18%);
+    background:
+      radial-gradient(
+        ellipse at 25% 0%,
+        rgb(170 231 255 / 12%),
+        transparent 70%
+      ),
+      var(--glass-surface);
   }
   .ntc-temperature {
     display: flex;
@@ -20,10 +27,14 @@
     font: 600 3.75rem/1.1 var(--font-sans);
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
+    text-shadow:
+      0 2px 4px rgb(0 0 0 / 20%),
+      0 0 32px rgb(161 228 255 / 22%);
   }
   .ntc-temperature small {
     font-size: 0.7em;
     letter-spacing: 0;
+    color: var(--muted-foreground);
   }
   .ntc-slider:focus-visible {
     outline: 2px solid var(--ring);
@@ -32,7 +43,7 @@
   }
   .ntc-slider {
     width: 100%;
-    height: 28px;
+    height: 36px;
     appearance: none;
     -webkit-appearance: none;
     background: transparent;
@@ -40,49 +51,67 @@
     cursor: pointer;
   }
   .ntc-slider::-webkit-slider-runnable-track {
-    height: 8px;
-    border: 1px solid rgb(255 255 255 / 36%);
+    height: 10px;
+    border: 1px solid var(--glass-border);
     border-radius: 999px;
-    background: rgb(6 15 38 / 20%);
-    box-shadow: inset 0 1px 3px rgb(0 0 0 / 24%);
+    background:
+      linear-gradient(90deg, rgb(157 224 255 / 28%), rgb(255 255 255 / 6%)),
+      rgb(6 15 38 / 32%);
+    box-shadow:
+      inset 0 2px 4px rgb(0 0 0 / 24%),
+      0 1px 0 rgb(255 255 255 / 20%);
   }
   .ntc-slider::-moz-range-track {
-    height: 6px;
-    border: 1px solid rgb(255 255 255 / 36%);
+    height: 8px;
+    border: 1px solid var(--glass-border);
     border-radius: 999px;
-    background: rgb(6 15 38 / 20%);
-    box-shadow: inset 0 1px 3px rgb(0 0 0 / 24%);
+    background:
+      linear-gradient(90deg, rgb(157 224 255 / 28%), rgb(255 255 255 / 6%)),
+      rgb(6 15 38 / 32%);
+    box-shadow:
+      inset 0 2px 4px rgb(0 0 0 / 24%),
+      0 1px 0 rgb(255 255 255 / 20%);
   }
   .ntc-slider::-webkit-slider-thumb {
-    width: 24px;
-    height: 24px;
-    margin-top: -9px;
+    width: 30px;
+    height: 30px;
+    margin-top: -11px;
     border: 1px solid var(--glass-highlight);
     border-radius: 50%;
     appearance: none;
     -webkit-appearance: none;
-    background: linear-gradient(
-      145deg,
-      rgb(255 255 255 / 62%),
-      rgb(202 224 250 / 38%)
-    );
+    background:
+      radial-gradient(
+        circle at 30% 20%,
+        rgb(255 255 255 / 85%),
+        transparent 65%
+      ),
+      linear-gradient(145deg, rgb(228 249 255 / 65%), rgb(128 192 226 / 30%));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 80%),
-      0 2px 8px rgb(0 0 0 / 28%);
+      inset 0 1px 1px rgb(255 255 255 / 90%),
+      inset 0 -2px 3px rgb(23 91 139 / 20%),
+      0 4px 12px rgb(0 0 0 / 32%),
+      0 0 16px rgb(162 230 255 / 16%);
+    transition: box-shadow 180ms ease;
   }
   .ntc-slider::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
+    width: 28px;
+    height: 28px;
     border: 1px solid var(--glass-highlight);
     border-radius: 50%;
-    background: linear-gradient(
-      145deg,
-      rgb(255 255 255 / 62%),
-      rgb(202 224 250 / 38%)
-    );
+    background:
+      radial-gradient(
+        circle at 30% 20%,
+        rgb(255 255 255 / 85%),
+        transparent 65%
+      ),
+      linear-gradient(145deg, rgb(228 249 255 / 65%), rgb(128 192 226 / 30%));
     box-shadow:
-      inset 0 1px 0 rgb(255 255 255 / 80%),
-      0 2px 8px rgb(0 0 0 / 28%);
+      inset 0 1px 1px rgb(255 255 255 / 90%),
+      inset 0 -2px 3px rgb(23 91 139 / 20%),
+      0 4px 12px rgb(0 0 0 / 32%),
+      0 0 16px rgb(162 230 255 / 16%);
+    transition: box-shadow 180ms ease;
   }
   .ntc-slider:disabled {
     cursor: not-allowed;
@@ -92,7 +121,7 @@
     display: flex;
     justify-content: space-between;
     margin-top: 4px;
-    color: var(--foreground);
+    color: var(--muted-foreground);
     font-size: 0.75rem;
     line-height: 1.5;
   }
