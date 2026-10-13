@@ -167,13 +167,9 @@ export function DeviceConnectionProvider({
             if (mountedRef.current && sessionRef.current === candidate)
               setError(message);
           },
-          onDisconnect(candidate: DeviceSerialSession, reason: Error) {
+          onDisconnect(candidate: DeviceSerialSession) {
             if (sessionRef.current !== candidate) return;
-            void disconnect()
-              .then(() => {
-                if (mountedRef.current) setError(reason.message);
-              })
-              .catch(() => undefined);
+            void disconnect().catch(() => undefined);
           },
         };
         const preferred = selectedPort
