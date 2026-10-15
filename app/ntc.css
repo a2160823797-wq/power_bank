@@ -9,13 +9,7 @@
     padding: 34px 36px 30px;
     border-right-color: rgb(255 255 255 / 28%);
     border-bottom-color: rgb(255 255 255 / 18%);
-    background:
-      radial-gradient(
-        ellipse at 25% 0%,
-        rgb(170 231 255 / 1%),
-        transparent 70%
-      ),
-      var(--glass-surface);
+    background: var(--glass-surface);
   }
   .ntc-temperature {
     display: flex;
