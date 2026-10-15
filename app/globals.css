@@ -78,8 +78,17 @@
     min-width: 320px;
     background-color: var(--background);
     background-image:
-      linear-gradient(rgb(5 13 26 / 18%), rgb(5 13 26 / 8%)),
-      url('./assets/glass-flow-background.png');
+      radial-gradient(
+        ellipse at 80% 0%,
+        rgb(119 181 232 / 30%),
+        transparent 54%
+      ),
+      radial-gradient(
+        ellipse at 0% 75%,
+        rgb(94 129 193 / 22%),
+        transparent 48%
+      ),
+      url('../desktop/assets/pro-black-wallpaper.jpg');
     background-position: center;
     background-size: cover;
     background-attachment: fixed;
