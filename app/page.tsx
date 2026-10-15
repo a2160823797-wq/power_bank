@@ -42,15 +42,11 @@ function Workspace() {
   function clearGlassHighlight() {
     glassRef.current?.style.removeProperty('--glass-x');
     glassRef.current?.style.removeProperty('--glass-y');
-    glassRef.current?.style.removeProperty('--glass-active');
     glassRef.current = null;
   }
 
   function moveGlassHighlight(event: PointerEvent<HTMLElement>) {
     if (event.pointerType !== 'mouse') return;
-    event.currentTarget.style.setProperty('--cursor-x', `${event.clientX}px`);
-    event.currentTarget.style.setProperty('--cursor-y', `${event.clientY}px`);
-    event.currentTarget.style.setProperty('--cursor-active', '1');
     const surface = (event.target as Element).closest<HTMLElement>(
       '.topbar, .battery-panel, .ntc-panel, .file-drop',
     );
@@ -59,7 +55,6 @@ function Workspace() {
     const bounds = surface.getBoundingClientRect();
     surface.style.setProperty('--glass-x', `${event.clientX - bounds.left}px`);
     surface.style.setProperty('--glass-y', `${event.clientY - bounds.top}px`);
-    surface.style.setProperty('--glass-active', '1');
     glassRef.current = surface;
   }
 
@@ -81,12 +76,8 @@ function Workspace() {
     <main
       className="updater-shell"
       onPointerMove={moveGlassHighlight}
-      onPointerLeave={(event) => {
-        clearGlassHighlight();
-        event.currentTarget.style.removeProperty('--cursor-active');
-      }}
+      onPointerLeave={clearGlassHighlight}
     >
-      <div className="cursor-glow" aria-hidden="true" />
       <header className="topbar">
         <svg
           className="brand-wordmark"
