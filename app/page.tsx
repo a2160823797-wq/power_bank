@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import { Battery, CircuitBoard, Thermometer, Upload } from 'lucide-react';
 import BatteryMonitor from '@/components/battery-monitor';
 import FirmwareUpdater from '@/components/firmware-updater';
@@ -35,19 +35,49 @@ export default function Home() {
 
 function Workspace() {
   const [view, setView] = useState(getWorkspaceView);
-  const { connectionBusy, connected, deviceKind, disconnect } = useDeviceConnection();
+  const glassRef = useRef<HTMLElement | null>(null);
+  const { connectionBusy, connected, deviceKind, disconnect } =
+    useDeviceConnection();
+
+  function clearGlassHighlight() {
+    glassRef.current?.style.removeProperty('--glass-x');
+    glassRef.current?.style.removeProperty('--glass-y');
+    glassRef.current = null;
+  }
+
+  function moveGlassHighlight(event: PointerEvent<HTMLElement>) {
+    if (event.pointerType !== 'mouse') return;
+    const surface = (event.target as Element).closest<HTMLElement>(
+      '.topbar, .battery-panel, .ntc-panel, .file-drop',
+    );
+    if (surface !== glassRef.current) clearGlassHighlight();
+    if (!surface) return;
+    const bounds = surface.getBoundingClientRect();
+    surface.style.setProperty('--glass-x', `${event.clientX - bounds.left}px`);
+    surface.style.setProperty('--glass-y', `${event.clientY - bounds.top}px`);
+    glassRef.current = surface;
+  }
 
   async function changeView(nextView: WorkspaceView) {
     if (connectionBusy) return;
-    if (connected && nextView !== 'upgrade' && deviceKind !== (nextView === 'temperature' ? 'ntc' : 'battery')) {
+    if (
+      connected &&
+      nextView !== 'upgrade' &&
+      deviceKind !== (nextView === 'temperature' ? 'ntc' : 'battery')
+    ) {
       await disconnect();
     }
+    clearGlassHighlight();
     setView(nextView);
     setWorkspaceView(nextView);
   }
 
   return (
-    <main className="updater-shell">
+    <main
+      className="updater-shell"
+      onPointerMove={moveGlassHighlight}
+      onPointerLeave={clearGlassHighlight}
+    >
       <header className="topbar">
         <svg
           className="brand-wordmark"
@@ -74,7 +104,20 @@ function Workspace() {
           />
         </svg>
         <div className="topbar-controls">
-          <nav className="workspace-nav" aria-label={t.navigation}>
+          <nav
+            className="workspace-nav"
+            aria-label={t.navigation}
+            style={
+              {
+                '--nav-index': [
+                  'battery',
+                  'cell-settings',
+                  'temperature',
+                  'upgrade',
+                ].indexOf(view),
+              } as CSSProperties
+            }
+          >
             <button
               type="button"
               aria-pressed={view === 'battery'}
@@ -88,7 +131,9 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'cell-settings'}
               disabled={connectionBusy}
-              onClick={() => void changeView('cell-settings').catch(() => undefined)}
+              onClick={() =>
+                void changeView('cell-settings').catch(() => undefined)
+              }
             >
               <CircuitBoard aria-hidden="true" />
               {t.cellSettings}
@@ -97,7 +142,9 @@ function Workspace() {
               type="button"
               aria-pressed={view === 'temperature'}
               disabled={connectionBusy}
-              onClick={() => void changeView('temperature').catch(() => undefined)}
+              onClick={() =>
+                void changeView('temperature').catch(() => undefined)
+              }
             >
               <Thermometer aria-hidden="true" />
               {t.temperature}
@@ -112,7 +159,10 @@ function Workspace() {
               {t.upgrade}
             </button>
           </nav>
-          <DeviceConnectionButton hidden={view === 'upgrade'} kind={view === 'temperature' ? 'ntc' : 'battery'} />
+          <DeviceConnectionButton
+            hidden={view === 'upgrade'}
+            kind={view === 'temperature' ? 'ntc' : 'battery'}
+          />
         </div>
       </header>
       {view !== 'upgrade' && <DeviceConnectionBar />}

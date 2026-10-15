@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import {
   NTC_MIN_TEMPERATURE,
   NTC_MAX_TEMPERATURE,
@@ -100,6 +100,11 @@ export default function NtcSimulator() {
         step="1"
         disabled={!connected || connectionBusy}
         value={temperature}
+        style={
+          {
+            '--temperature-fill': `${((temperature - NTC_MIN_TEMPERATURE) / (NTC_MAX_TEMPERATURE - NTC_MIN_TEMPERATURE)) * 100}%`,
+          } as CSSProperties
+        }
         aria-label="设定温度"
         onChange={(e) => {
           setTemperature(Number(e.currentTarget.value));
