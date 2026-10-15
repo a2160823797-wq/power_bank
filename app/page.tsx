@@ -42,6 +42,7 @@ function Workspace() {
   function clearGlassHighlight() {
     glassRef.current?.style.removeProperty('--glass-x');
     glassRef.current?.style.removeProperty('--glass-y');
+    glassRef.current?.style.removeProperty('--glass-active');
     glassRef.current = null;
   }
 
@@ -55,6 +56,7 @@ function Workspace() {
     const bounds = surface.getBoundingClientRect();
     surface.style.setProperty('--glass-x', `${event.clientX - bounds.left}px`);
     surface.style.setProperty('--glass-y', `${event.clientY - bounds.top}px`);
+    surface.style.setProperty('--glass-active', '1');
     glassRef.current = surface;
   }
 

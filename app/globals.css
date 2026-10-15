@@ -296,11 +296,15 @@
     inset: 0;
     border-radius: inherit;
     background: radial-gradient(
-      440px circle at var(--glass-x, 18%) var(--glass-y, 0%),
-      rgb(235 247 255 / 1.5%),
-      transparent 72%
+      140px circle at var(--glass-x, 0px) var(--glass-y, 0px),
+      rgb(240 249 255 / 22%) 0%,
+      rgb(202 230 255 / 10%) 35%,
+      rgb(177 218 255 / 3%) 65%,
+      transparent 100%
     );
+    opacity: var(--glass-active, 0);
     pointer-events: none;
+    transition: opacity 160ms ease;
   }
   .device-button {
     display: inline-flex;
