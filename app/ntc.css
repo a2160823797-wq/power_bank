@@ -7,8 +7,8 @@
   }
   .temperature-content .ntc-panel {
     padding: 34px 36px 30px;
-    border-right-color: var(--glass-border);
-    border-bottom-color: var(--glass-border);
+    border-right-color: rgb(255 255 255 / 28%);
+    border-bottom-color: rgb(255 255 255 / 18%);
     background:
       radial-gradient(
         ellipse at 25% 0%,
@@ -27,7 +27,9 @@
     font: 500 4rem/1.1 var(--font-sans);
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
-    text-shadow: none;
+    text-shadow:
+      0 2px 4px rgb(0 0 0 / 20%),
+      0 0 32px rgb(161 228 255 / 22%);
   }
   .ntc-temperature small {
     font-size: 0.7em;
@@ -55,10 +57,10 @@
     background:
       linear-gradient(
         90deg,
-        rgb(65 127 213 / 64%) var(--temperature-fill),
+        rgb(169 221 255 / 78%) var(--temperature-fill),
         transparent var(--temperature-fill)
       ),
-      rgb(60 91 132 / 8%);
+      rgb(6 15 38 / 12%);
     box-shadow:
       inset 0 2px 4px rgb(0 0 0 / 24%),
       0 1px 0 rgb(255 255 255 / 20%);
@@ -70,10 +72,10 @@
     background:
       linear-gradient(
         90deg,
-        rgb(65 127 213 / 64%) var(--temperature-fill),
+        rgb(169 221 255 / 78%) var(--temperature-fill),
         transparent var(--temperature-fill)
       ),
-      rgb(60 91 132 / 8%);
+      rgb(6 15 38 / 12%);
     box-shadow:
       inset 0 2px 4px rgb(0 0 0 / 24%),
       0 1px 0 rgb(255 255 255 / 20%);
