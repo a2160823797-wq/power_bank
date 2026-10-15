@@ -66,14 +66,18 @@
   .battery-metric {
     min-width: 0;
     padding: 20px 22px;
-    border-radius: 20px;
+    border-radius: 23px;
   }
   .battery-metric,
   .battery-cell {
     border: 1px solid var(--glass-border);
     border-top-color: var(--glass-highlight);
     background:
-      radial-gradient(ellipse at 0% 0%, rgb(221 242 255 / 3%), transparent 70%),
+      radial-gradient(
+        ellipse at 0% 0%,
+        rgb(221 242 255 / 3%),
+        transparent 70%
+      ),
       linear-gradient(145deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%)),
       var(--surface-inset);
     box-shadow:
@@ -107,7 +111,9 @@
     line-height: 1.15;
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
-    text-shadow: none;
+    text-shadow:
+      0 1px 2px rgb(0 0 0 / 24%),
+      0 0 24px rgb(163 226 255 / 18%);
   }
   .battery-metric-value > span:not(.battery-empty-value) {
     margin-left: 8px;
