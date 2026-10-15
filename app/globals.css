@@ -78,17 +78,8 @@
     min-width: 320px;
     background-color: var(--background);
     background-image:
-      radial-gradient(
-        ellipse at 80% 0%,
-        rgb(119 181 232 / 30%),
-        transparent 54%
-      ),
-      radial-gradient(
-        ellipse at 0% 75%,
-        rgb(94 129 193 / 22%),
-        transparent 48%
-      ),
-      url('../desktop/assets/pro-black-wallpaper.jpg');
+      linear-gradient(rgb(6 14 28 / 8%), rgb(6 14 28 / 12%)),
+      url('./assets/coastal-dusk-background.png');
     background-position: center;
     background-size: cover;
     background-attachment: fixed;
