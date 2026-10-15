@@ -27,9 +27,7 @@
     font: 500 4rem/1.1 var(--font-sans);
     letter-spacing: -0.04em;
     font-variant-numeric: tabular-nums;
-    text-shadow:
-      0 2px 4px rgb(0 0 0 / 20%),
-      0 0 32px rgb(161 228 255 / 22%);
+    text-shadow: none;
   }
   .ntc-temperature small {
     font-size: 0.7em;
