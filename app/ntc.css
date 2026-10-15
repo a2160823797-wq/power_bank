@@ -12,7 +12,7 @@
     background:
       radial-gradient(
         ellipse at 25% 0%,
-        rgb(170 231 255 / 3%),
+        rgb(170 231 255 / 1%),
         transparent 70%
       ),
       var(--glass-surface);
@@ -91,10 +91,10 @@
     background:
       radial-gradient(
         circle at 30% 20%,
-        rgb(255 255 255 / 45%),
+        rgb(255 255 255 / 25%),
         transparent 65%
       ),
-      linear-gradient(145deg, rgb(228 249 255 / 30%), rgb(128 192 226 / 12%));
+      linear-gradient(145deg, rgb(228 249 255 / 16%), rgb(128 192 226 / 6%));
     box-shadow:
       inset 0 1px 1px rgb(255 255 255 / 90%),
       inset 0 -2px 3px rgb(23 91 139 / 20%),
@@ -112,10 +112,10 @@
     background:
       radial-gradient(
         circle at 30% 20%,
-        rgb(255 255 255 / 45%),
+        rgb(255 255 255 / 25%),
         transparent 65%
       ),
-      linear-gradient(145deg, rgb(228 249 255 / 30%), rgb(128 192 226 / 12%));
+      linear-gradient(145deg, rgb(228 249 255 / 16%), rgb(128 192 226 / 6%));
     box-shadow:
       inset 0 1px 1px rgb(255 255 255 / 90%),
       inset 0 -2px 3px rgb(23 91 139 / 20%),
