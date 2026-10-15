@@ -40,11 +40,11 @@
     border-top-color: var(--glass-highlight);
     border-radius: 16px;
     background:
-      linear-gradient(135deg, rgb(255 255 255 / 9%), transparent 70%),
+      linear-gradient(135deg, rgb(255 255 255 / 3%), transparent 70%),
       var(--surface-inset);
     box-shadow: var(--shadow-control);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
-    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(4px) saturate(120%);
+    backdrop-filter: blur(4px) saturate(120%);
     color: var(--foreground);
     transition:
       border-color 180ms ease,
@@ -75,15 +75,15 @@
     background:
       radial-gradient(
         ellipse at 0% 0%,
-        rgb(221 242 255 / 16%),
+        rgb(221 242 255 / 3%),
         transparent 70%
       ),
-      linear-gradient(145deg, rgb(255 255 255 / 10%), rgb(255 255 255 / 2%)),
+      linear-gradient(145deg, rgb(255 255 255 / 3%), rgb(255 255 255 / 1%)),
       var(--surface-inset);
     box-shadow:
-      inset 0 1px 1px rgb(255 255 255 / 46%),
-      inset 0 -1px 1px rgb(220 239 255 / 16%),
-      0 8px 24px rgb(3 10 24 / 10%);
+      inset 0 1px 1px rgb(255 255 255 / 24%),
+      inset 0 -1px 1px rgb(220 239 255 / 8%),
+      0 8px 24px rgb(3 10 24 / 5%);
   }
   .battery-field-label,
   .battery-panel h2 {
@@ -235,11 +235,11 @@
     border-top-color: var(--glass-highlight);
     border-radius: 18px;
     background:
-      linear-gradient(135deg, rgb(255 255 255 / 8%), transparent 65%),
+      linear-gradient(135deg, rgb(255 255 255 / 3%), transparent 65%),
       var(--surface-inset);
     box-shadow: var(--shadow-control);
-    -webkit-backdrop-filter: blur(16px) saturate(160%);
-    backdrop-filter: blur(16px) saturate(160%);
+    -webkit-backdrop-filter: blur(4px) saturate(120%);
+    backdrop-filter: blur(4px) saturate(120%);
     transition:
       background-color 180ms ease,
       border-color 180ms ease,
