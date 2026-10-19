@@ -3,12 +3,18 @@
 @import './battery.css';
 @import './ntc.css';
 
+@font-face {
+  font-family: 'PowerBank Sans';
+  src: url('./assets/fonts/powerbank-sans.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 600;
+  font-display: block;
+}
+
 :root {
   color-scheme: dark;
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
-  --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color-scheme: only dark;
+  --font-sans: 'PowerBank Sans', sans-serif;
   --background: #0c1524;
   --foreground: #f7f9fc;
   --primary: #a9ddff;
@@ -48,11 +54,14 @@
     margin: 0;
     padding: 0;
     border: 0 solid var(--border);
-    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+    outline-color: rgb(164 220 255 / 50%);
   }
   html {
+    font-size: 16px;
     font-family: var(--font-sans);
+    font-synthesis: none;
     line-height: 1.5;
+    text-size-adjust: 100%;
     -webkit-text-size-adjust: 100%;
   }
   body {
@@ -89,7 +98,10 @@
   }
   button,
   input {
+    appearance: none;
+    -webkit-appearance: none;
     font: inherit;
+    line-height: inherit;
     letter-spacing: inherit;
     color: inherit;
     text-shadow: inherit;
@@ -98,7 +110,6 @@
     opacity: 1;
   }
   button {
-    appearance: button;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
   }
@@ -495,6 +506,7 @@
     height: 30px;
     overflow: hidden;
     appearance: none;
+    -webkit-appearance: none;
     border-radius: 999px;
     border: 1px solid var(--glass-border);
     background: var(--surface-inset);
@@ -691,19 +703,6 @@
     padding-inline: 4px;
   }
   .workspace-nav button svg {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-transparency: reduce) {
-  :root {
-    --glass-surface: #233145;
-    --surface-inset: #19263a;
-  }
-  .topbar::after,
-  .battery-panel::after,
-  .ntc-panel::after,
-  .file-drop::after {
     display: none;
   }
 }

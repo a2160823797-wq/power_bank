@@ -9,6 +9,9 @@ const css = (await readFile(resolve(buildDirectory, 'style.css'), 'utf8'))
 const javascript = (await readFile(resolve(buildDirectory, 'app.js'), 'utf8'))
   .replaceAll('https://react.dev/errors/', 'React error ')
   .replaceAll('</script', '<\\/script');
+const fontLicense = `<script type="text/plain" id="font-license">${(
+  await readFile(resolve(projectRoot, 'app/assets/fonts/OFL.txt'), 'utf8')
+).replaceAll('</script', '<\\/script')}</script>`;
 
 const html = `<!doctype html>
 <html lang="zh-CN">
@@ -17,6 +20,7 @@ const html = `<!doctype html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="PowerBank 电池监测、温度模拟与固件升级" />
     <title>PowerBank</title>
+    ${fontLicense}
     <style>${css}</style>
   </head>
   <body>
@@ -32,9 +36,9 @@ const allowedNamespaceUrls = new Set([
   'http://www.w3.org/2000/svg',
   'http://www.w3.org/XML/1998/namespace',
 ]);
-const remainingUrls = [...html.matchAll(/https?:\/\/[^\s"'<>`]+/gi)].map(
-  ([url]) => url,
-);
+const remainingUrls = [
+  ...html.replace(fontLicense, '').matchAll(/https?:\/\/[^\s"'<>`]+/gi),
+].map(([url]) => url);
 const publicUrls = [...new Set(remainingUrls)].filter(
   (url) => !allowedNamespaceUrls.has(url),
 );
