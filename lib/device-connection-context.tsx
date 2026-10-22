@@ -22,6 +22,7 @@ import {
   DevicePortReleaseError,
 } from './device-connection';
 import { getSavedSerialPort, rememberSerialPort } from './serial-device';
+import { getWorkspaceView } from './workspace-view';
 import {
   verifyUpgradePort,
   UpgradePortReleaseError,
@@ -143,7 +144,11 @@ export function DeviceConnectionProvider({
     return () => globalThis.clearTimeout(report_timer);
   }, [connection, connectionBusy, battery.lastReceivedAt, disconnect]);
 
-  async function connect(manual = false, kind: DeviceKind = 'battery') {
+  const connect = useCallback(async (
+    manual = false,
+    kind: DeviceKind = 'battery',
+    savedOnly = false,
+  ) => {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
     markBusy(true);
     setConnection('connecting');
@@ -176,7 +181,15 @@ export function DeviceConnectionProvider({
           ? null
           : await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
         let result;
-        if (selectedPort || !ports.length) {
+        if (savedOnly) {
+          if (!preferred) return;
+          result = await connectSelectedDevice(
+            preferred,
+            controller.signal,
+            callbacks,
+            kind,
+          );
+        } else if (selectedPort || !ports.length) {
           const port = selectedPort ?? await serial.requestPort();
           result = await connectSelectedDevice(
             port,
@@ -261,7 +274,7 @@ export function DeviceConnectionProvider({
     connectTaskRef.current = operation;
     await operation;
     if (connectTaskRef.current === operation) connectTaskRef.current = null;
-  }
+  }, [serialSupported, markBusy, releaseSession, disconnect]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -272,6 +285,12 @@ export function DeviceConnectionProvider({
       void upgradeProbeRef.current?.close().catch(() => undefined);
     };
   }, []);
+
+  useEffect(() => {
+    const view = getWorkspaceView();
+    if (view === 'upgrade') return;
+    void connect(false, view === 'temperature' ? 'ntc' : 'battery', true);
+  }, [connect]);
 
   async function withUpgrade<T>(
     operation: (port: SerialPortLike) => Promise<T>,
