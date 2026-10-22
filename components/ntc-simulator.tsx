@@ -1,9 +1,151 @@
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {
+  NTC_MIN_TEMPERATURE,
+  NTC_MAX_TEMPERATURE,
+  NtcTimeoutError,
+} from '@/lib/ntc-protocol';
+import { useDeviceConnection } from '@/lib/device-connection-context';
+
+const ACK_TIMEOUT_MS = 1000;
+const DEFAULT_TEMPERATURE = 25;
+
 export default function NtcSimulator() {
+  const {
+    connectionBusy,
+    connected,
+    disconnect,
+    setTemperature: setDeviceTemperature,
+  } = useDeviceConnection('ntc');
+  const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
+  const [message, setMessage] = useState('');
+  const controllerRef = useRef<AbortController | null>(null);
+  const queuedTemperature = useRef<number | null>(null);
+  const sendingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      queuedTemperature.current = null;
+      controllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    setMessage('');
+    if (!connected) {
+      queuedTemperature.current = null;
+      controllerRef.current?.abort();
+    }
+  }, [connected]);
+
+  function sendTemperature(value: number) {
+    if (!connected || connectionBusy) return;
+    queuedTemperature.current = value;
+    if (sendingRef.current) return;
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    sendingRef.current = true;
+    setMessage('');
+    void (async () => {
+      let cur_temperature = value;
+      try {
+        while (queuedTemperature.current !== null) {
+          cur_temperature = queuedTemperature.current;
+          queuedTemperature.current = null;
+          const reply = await setDeviceTemperature(
+            cur_temperature,
+            ACK_TIMEOUT_MS,
+            controller.signal,
+          );
+          if (reply.status !== 0) {
+            throw new Error(`${cur_temperature}℃ 设置失败，检查设备后重试`);
+          }
+        }
+      } catch (reason) {
+        if (
+          mountedRef.current &&
+          !controller.signal.aborted &&
+          !(reason instanceof Error && reason.name === 'AbortError')
+        ) {
+          if (reason instanceof NtcTimeoutError) {
+            await disconnect().catch(() => undefined);
+          } else {
+            setMessage(
+              reason instanceof Error ? reason.message : String(reason),
+            );
+          }
+        }
+      } finally {
+        controllerRef.current = null;
+        sendingRef.current = false;
+        queuedTemperature.current = null;
+      }
+    })();
+  }
+
   return (
     <section className="ntc-panel" aria-label="温度模拟">
-      <h2 className="ntc-title">编码器设温</h2>
-      <p className="ntc-instruction">请旋转设备编码器调整温度</p>
-      <p className="ntc-hint">当前温度以设备屏幕显示为准</p>
+      {message && <output className="ntc-alert">{message}</output>}
+      <div className="ntc-temperature">
+        <span>{temperature}</span>
+        <small>℃</small>
+      </div>
+      <input
+        id="ntc-temperature-slider"
+        className="ntc-slider"
+        type="range"
+        min={NTC_MIN_TEMPERATURE}
+        max={NTC_MAX_TEMPERATURE}
+        step="1"
+        disabled={!connected || connectionBusy}
+        value={temperature}
+        style={
+          {
+            '--temperature-fill': `${((temperature - NTC_MIN_TEMPERATURE) / (NTC_MAX_TEMPERATURE - NTC_MIN_TEMPERATURE)) * 100}%`,
+          } as CSSProperties
+        }
+        aria-label="设定温度"
+        onChange={(e) => {
+          setTemperature(Number(e.currentTarget.value));
+        }}
+        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+        onPointerUp={(e) => sendTemperature(Number(e.currentTarget.value))}
+        onKeyUp={(e) => {
+          if (
+            [
+              'ArrowLeft',
+              'ArrowRight',
+              'ArrowUp',
+              'ArrowDown',
+              'Home',
+              'End',
+              'PageUp',
+              'PageDown',
+            ].includes(e.key)
+          ) {
+            sendTemperature(Number(e.currentTarget.value));
+          }
+        }}
+      />
+      <div className="ntc-range" aria-hidden="true">
+        <span>{NTC_MIN_TEMPERATURE}℃</span>
+        <span>{NTC_MAX_TEMPERATURE}℃</span>
+      </div>
+      <div className="actions">
+        <button
+          className="device-button device-button-secondary"
+          type="button"
+          disabled={!connected || connectionBusy}
+          onClick={() => {
+            setTemperature(DEFAULT_TEMPERATURE);
+            sendTemperature(DEFAULT_TEMPERATURE);
+          }}
+        >
+          {DEFAULT_TEMPERATURE}℃
+        </button>
+      </div>
     </section>
   );
 }

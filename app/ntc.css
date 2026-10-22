@@ -10,22 +10,140 @@
     border-right-color: rgb(255 255 255 / 28%);
     border-bottom-color: rgb(255 255 255 / 18%);
     background: var(--glass-surface);
-    text-align: center;
   }
-  .ntc-title {
-    margin: 0 0 20px;
+  .ntc-temperature {
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 24px;
     color: var(--foreground);
-    font-size: 1.5rem;
-    font-weight: 500;
+    font: 500 4rem/1.1 var(--font-sans);
+    letter-spacing: -0.04em;
+    font-variant-numeric: tabular-nums;
+    text-shadow:
+      0 2px 4px rgb(0 0 0 / 20%),
+      0 0 32px rgb(161 228 255 / 22%);
   }
-  .ntc-instruction {
-    margin: 0 0 12px;
-    color: var(--foreground);
-  }
-  .ntc-hint {
-    margin: 0;
+  .ntc-temperature small {
+    font-size: 0.7em;
+    letter-spacing: 0;
     color: var(--muted-foreground);
-    font-size: 0.875rem;
+  }
+  .ntc-slider:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+    border-radius: 999px;
+  }
+  .ntc-slider {
+    width: 100%;
+    height: 36px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    accent-color: var(--primary);
+    cursor: pointer;
+  }
+  .ntc-slider::-webkit-slider-runnable-track {
+    box-sizing: border-box;
+    height: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background:
+      linear-gradient(
+        90deg,
+        rgb(169 221 255 / 78%) var(--temperature-fill),
+        transparent var(--temperature-fill)
+      ),
+      rgb(6 15 38 / 12%);
+    box-shadow:
+      inset 0 2px 4px rgb(0 0 0 / 24%),
+      0 1px 0 rgb(255 255 255 / 20%);
+  }
+  .ntc-slider::-moz-range-track {
+    box-sizing: border-box;
+    height: 12px;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background:
+      linear-gradient(
+        90deg,
+        rgb(169 221 255 / 78%) var(--temperature-fill),
+        transparent var(--temperature-fill)
+      ),
+      rgb(6 15 38 / 12%);
+    box-shadow:
+      inset 0 2px 4px rgb(0 0 0 / 24%),
+      0 1px 0 rgb(255 255 255 / 20%);
+  }
+  .ntc-slider::-webkit-slider-thumb {
+    box-sizing: border-box;
+    width: 40px;
+    height: 28px;
+    margin-top: -9px;
+    border: 1px solid var(--glass-highlight);
+    border-radius: 999px;
+    appearance: none;
+    -webkit-appearance: none;
+    background:
+      radial-gradient(
+        circle at 30% 20%,
+        rgb(255 255 255 / 25%),
+        transparent 65%
+      ),
+      linear-gradient(145deg, rgb(228 249 255 / 16%), rgb(128 192 226 / 6%));
+    box-shadow:
+      inset 0 1px 1px rgb(255 255 255 / 90%),
+      inset 0 -2px 3px rgb(23 91 139 / 20%),
+      0 4px 12px rgb(0 0 0 / 32%),
+      0 0 16px rgb(162 230 255 / 16%);
+    transition:
+      box-shadow 180ms ease,
+      scale 280ms var(--ease-glass);
+  }
+  .ntc-slider::-moz-range-thumb {
+    box-sizing: border-box;
+    width: 40px;
+    height: 28px;
+    border: 1px solid var(--glass-highlight);
+    border-radius: 999px;
+    background:
+      radial-gradient(
+        circle at 30% 20%,
+        rgb(255 255 255 / 25%),
+        transparent 65%
+      ),
+      linear-gradient(145deg, rgb(228 249 255 / 16%), rgb(128 192 226 / 6%));
+    box-shadow:
+      inset 0 1px 1px rgb(255 255 255 / 90%),
+      inset 0 -2px 3px rgb(23 91 139 / 20%),
+      0 4px 12px rgb(0 0 0 / 32%),
+      0 0 16px rgb(162 230 255 / 16%);
+    transition:
+      box-shadow 180ms ease,
+      scale 280ms var(--ease-glass);
+  }
+  .ntc-slider:not(:disabled):active::-webkit-slider-thumb {
+    scale: 1.12 1.08;
+  }
+  .ntc-slider:not(:disabled):active::-moz-range-thumb {
+    scale: 1.12 1.08;
+  }
+  .ntc-slider:disabled {
+    cursor: not-allowed;
+    opacity: 0.85;
+  }
+  .ntc-range {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+    color: var(--muted-foreground);
+    font-size: 0.75rem;
+    line-height: 1.5;
+  }
+  .ntc-alert {
+    display: block;
+    margin-bottom: 12px;
   }
 }
 
@@ -36,6 +154,9 @@
     }
     .temperature-content .ntc-panel {
       padding: 28px 24px 24px;
+    }
+    .ntc-temperature {
+      font-size: 3.25rem;
     }
   }
 }
