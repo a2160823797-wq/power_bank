@@ -16,6 +16,8 @@
     "test:iap": "node --test scripts/test-iap.mjs",
     "dev": "vite",
     "build": "vite build && node scripts/inline-offline.mjs",
+    "build:mcp": "tsc --noEmit --project mcp/tsconfig.json && vite build --config mcp/vite.config.ts",
+    "mcp": "node outputs/mcp/server.mjs",
     "build:offline": "npm run build",
     "desktop": "npm run build:offline && install-electron && electron .",
     "build:desktop": "npm run build:offline && electron-builder --win portable --x64 --publish never",
@@ -43,9 +45,12 @@
     }
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
     "lucide-react": "1.31.0",
     "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react-dom": "19.2.6",
+    "serialport": "13.0.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "22.19.19",

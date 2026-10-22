@@ -16,7 +16,7 @@ const CAN = 0x18;
 const CRC_REQUEST = 0x43;
 const APP_READY_KEY = 0xaa55bbdd;
 
-enum BootState {
+export enum BootState {
   Ready = 0,
   AppError,
   AppRequestUpgrade,
@@ -351,7 +351,7 @@ export class IapSerialSession {
     await this.waitControl(CRC_REQUEST, this.config.handshakeTimeoutMs);
   }
 
-  private async readBootOption(timeoutMs = IAP_COMMAND_TIMEOUT_MS) {
+  async readBootOption(timeoutMs = IAP_COMMAND_TIMEOUT_MS) {
     const payload = await this.command(1, new Uint8Array(), timeoutMs);
     if (payload.length < 16) throw new Error('设备升级状态回复长度不足');
     const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
@@ -464,7 +464,7 @@ export class IapSerialSession {
     onProgress(100, firmware.length);
   }
 
-  private async readBootOptionWithRetry() {
+  async readBootOptionWithRetry() {
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await this.readBootOption();
