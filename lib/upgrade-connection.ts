@@ -1,4 +1,5 @@
-import { IapSerialSession, type SerialPortLike } from './iap-protocol';
+import { BootState, IapSerialSession, type SerialPortLike } from './iap-protocol';
+import { DEFAULT_CONFIG } from './iap-config';
 import type { DeviceSerialSession } from './device-session';
 import { DeviceSelectionError } from './device-connection';
 
@@ -9,11 +10,82 @@ export class UpgradePortReleaseError extends Error {
   }
 }
 
+export class UpgradeResetDisconnectError extends Error {
+  constructor(error: unknown) {
+    super(error instanceof Error ? error.message : String(error));
+    this.name = 'UpgradeResetDisconnectError';
+  }
+}
+
 async function release(session: IapSerialSession) {
   try {
     await session.close();
   } catch (error) {
     throw new UpgradePortReleaseError(session, error);
+  }
+}
+
+export async function upgradeFirmware(
+  port: SerialPortLike,
+  ...[fileName, firmware, onProgress, onStage]: Parameters<IapSerialSession['upgrade']>
+) {
+  const session = new IapSerialSession(port);
+  let before: BootState | undefined;
+  let cur_stage: 'handshake' | 'writing' | 'verifying' = 'handshake';
+  let sent = 0;
+  try {
+    await session.open();
+    before = (await session.readBootOption()).state;
+    await session.upgrade(
+      fileName,
+      firmware,
+      (percent, count) => {
+        sent = count;
+        onProgress(percent, count);
+      },
+      (stage) => {
+        cur_stage = stage;
+        onStage(stage);
+      },
+    );
+  } catch (error) {
+    // 只恢复 APP 复位进入 Bootloader 时的断链，写入开始后不自动重发
+    if (
+      before === BootState.App &&
+      cur_stage === 'handshake' &&
+      sent === 0 &&
+      session.isDisconnected
+    ) {
+      throw new UpgradeResetDisconnectError(error);
+    }
+    throw error;
+  } finally {
+    await release(session);
+  }
+}
+
+export async function reconnectUpgradePort(port: SerialPortLike) {
+  for (let attempt = 1; ; attempt++) {
+    const session = new IapSerialSession(port);
+    let option;
+    try {
+      await session.open();
+      option = await session.readBootOptionWithRetry();
+    } catch (error) {
+      if (attempt >= DEFAULT_CONFIG.maxAttempts) throw error;
+    } finally {
+      await release(session);
+    }
+    if (option) {
+      if (
+        option.state !== BootState.AppRequestUpgrade &&
+        option.state !== BootState.AppUpdate
+      ) {
+        throw new Error('连接已恢复，但设备未进入升级模式；未重发固件');
+      }
+      return;
+    }
+    await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 350));
   }
 }
 

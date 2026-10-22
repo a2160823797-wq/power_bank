@@ -26,6 +26,8 @@ import {
   verifyUpgradePort,
   UpgradePortReleaseError,
   discoverUpgradePort,
+  UpgradeResetDisconnectError,
+  reconnectUpgradePort,
 } from './upgrade-connection';
 
 type Connection =
@@ -143,9 +145,21 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         return result;
       };
       const session = sessions.find((candidate) => candidate.port === selectedPort);
-      if (session)
-        return await session.withUpgrade(runOperation);
-      return await runOperation(selectedPort);
+      try {
+        if (session)
+          return await session.withUpgrade(runOperation);
+        return await runOperation(selectedPort);
+      } catch (reason) {
+        if (!(reason instanceof UpgradeResetDisconnectError)) throw reason;
+        for (const controller of controllers) {
+          if (controller.sessionRef.current?.port === selectedPort)
+            await controller.value.disconnect();
+          if (controller.closeTaskRef.current) await controller.closeTaskRef.current;
+        }
+        for (const controller of controllers) controller.markBusy(true);
+        await reconnectUpgradePort(selectedPort);
+        return await runOperation(selectedPort);
+      }
     } catch (reason) {
       if (reason instanceof UpgradePortReleaseError)
         upgradeProbeRef.current = reason.session;

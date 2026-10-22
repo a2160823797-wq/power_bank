@@ -185,11 +185,16 @@ export class IapSerialSession {
   private readTask: Promise<void> | null = null;
   private aborted = false;
   private opened = false;
+  private disconnected = false;
 
   constructor(
     private port: SerialPortLike,
     private config: IapConfig = DEFAULT_CONFIG,
   ) {}
+
+  get isDisconnected() {
+    return this.disconnected;
+  }
 
   async open() {
     await this.port.open({
@@ -211,16 +216,21 @@ export class IapSerialSession {
       while (this.reader) {
         const { value, done } = await this.reader.read();
         if (done) {
-          if (!this.aborted) this.inbox.fail(new Error('串口已断开'));
+          if (!this.aborted) {
+            this.disconnected = true;
+            this.inbox.fail(new Error('串口已断开'));
+          }
           break;
         }
         if (value?.length) this.inbox.push(value);
       }
     } catch (error) {
-      if (!this.aborted)
+      if (!this.aborted) {
+        this.disconnected = true;
         this.inbox.fail(
           error instanceof Error ? error : new Error('串口已断开'),
         );
+      }
     }
   }
 
@@ -230,10 +240,16 @@ export class IapSerialSession {
 
   private async write(data: Uint8Array) {
     this.ensureActive();
-    if (!this.port.writable) throw new Error('串口不可写');
+    if (!this.port.writable) {
+      this.disconnected = true;
+      throw new Error('串口不可写');
+    }
     const writer = this.port.writable.getWriter();
     try {
       await writer.write(data);
+    } catch (error) {
+      if (!this.aborted) this.disconnected = true;
+      throw error;
     } finally {
       writer.releaseLock();
     }

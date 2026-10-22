@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FileCheck2, Upload } from 'lucide-react';
-import { IapSerialSession, validateFirmware } from '@/lib/iap-protocol';
+import { validateFirmware } from '@/lib/iap-protocol';
+import { upgradeFirmware } from '@/lib/upgrade-connection';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
 type Stage =
@@ -108,19 +109,14 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
     runningRef.current = true;
     try {
       await withUpgrade(async (port) => {
-        const session = new IapSerialSession(port);
-        try {
-          await session.open();
-          await session.upgrade(
-            firmware.file.name,
-            firmware.data,
-            (percent) => setProgress(percent),
-            (nextStage) =>
-              setStage(nextStage === 'handshake' ? 'preparing' : nextStage),
-          );
-        } finally {
-          await session.close();
-        }
+        await upgradeFirmware(
+          port,
+          firmware.file.name,
+          firmware.data,
+          (percent) => setProgress(percent),
+          (nextStage) =>
+            setStage(nextStage === 'handshake' ? 'preparing' : nextStage),
+        );
       });
       setStage('success');
       setProgress(100);
