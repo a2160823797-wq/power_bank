@@ -160,6 +160,7 @@ function deviceTimeToUnix(seconds: number) {
 
 interface BatteryCallbacks {
   onData(state: BatteryState): void;
+  onTotalVoltage?(voltageMv: number): void;
   onDisconnect(): void;
   onError(message: string): void;
 }
@@ -523,9 +524,10 @@ export class BatterySerialSession {
       const type = data[0];
       if (type <= 3 && data.length === 3) {
         if (type === 0) this.state.temperatureC = view.getInt16(1, true) / 10;
-        else if (type === 1)
+        else if (type === 1) {
           this.state.totalVoltageMv = view.getUint16(1, true);
-        else {
+          this.callbacks.onTotalVoltage?.(this.state.totalVoltageMv);
+        } else {
           const index = type - 2;
           // 串数已知时忽略旧接口中不属于此电池组的占位值。
           if (this.state.cellCount !== null && index >= this.state.cellCount)

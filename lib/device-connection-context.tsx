@@ -43,6 +43,7 @@ interface DeviceConnection {
   manualSelection: boolean;
   error: string;
   battery: BatteryState;
+  displayTotalVoltageMv: number | null;
   connect: (manual?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   setCellInfo: (field: 0 | 1, value: string) => Promise<void>;
@@ -171,6 +172,7 @@ function useDeviceController(kind: DeviceKind) {
   const serialSupported = 'serial' in navigator;
   const [connection, setConnection] = useState<Connection>('disconnected');
   const [battery, setBattery] = useState(createBatteryState);
+  const [displayTotalVoltageMv, setDisplayTotalVoltageMv] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [connectionBusy, setConnectionBusy] = useState(false);
   const [manualSelection, setManualSelection] = useState(false);
@@ -202,6 +204,7 @@ function useDeviceController(kind: DeviceKind) {
     if (mountedRef.current) {
       setConnection('disconnecting');
       setBattery(createBatteryState);
+      setDisplayTotalVoltageMv(null);
       setError('');
     }
     const operation = (async () => {
@@ -251,6 +254,7 @@ function useDeviceController(kind: DeviceKind) {
     markBusy(true);
     setConnection('connecting');
     setBattery(createBatteryState);
+    setDisplayTotalVoltageMv(null);
     setError('');
     const controller = new AbortController();
     connectControllerRef.current = controller;
@@ -261,7 +265,22 @@ function useDeviceController(kind: DeviceKind) {
         const selectedPort = manual ? await serial.requestPort() : null;
         const ports = selectedPort ? [] : await serial.getPorts();
         if (controller.signal.aborted) return;
+        const voltage_samples: number[] = [];
+        let cur_display_voltage: number | null = null;
         const callbacks = {
+          onTotalVoltage(candidate: DeviceSerialSession, voltageMv: number) {
+            if (!mountedRef.current || sessionRef.current !== candidate) return;
+            if (cur_display_voltage === null) {
+              voltage_samples.push(voltageMv, voltageMv, voltageMv);
+              cur_display_voltage = voltageMv;
+            } else {
+              voltage_samples.shift();
+              voltage_samples.push(voltageMv);
+              const cur_median = [...voltage_samples].sort((a, b) => a - b)[1];
+              cur_display_voltage += (cur_median - cur_display_voltage) * 0.25;
+            }
+            setDisplayTotalVoltageMv(cur_display_voltage);
+          },
           onData(candidate: DeviceSerialSession, state: BatteryState) {
             if (mountedRef.current && sessionRef.current === candidate)
               setBattery(state);
@@ -351,6 +370,7 @@ function useDeviceController(kind: DeviceKind) {
           }
           setConnection(releaseFailed ? 'release-error' : 'disconnected');
           setBattery(createBatteryState);
+          setDisplayTotalVoltageMv(null);
           if (
             releaseFailed ||
             !(
@@ -402,6 +422,7 @@ function useDeviceController(kind: DeviceKind) {
       manualSelection,
       error,
       battery,
+      displayTotalVoltageMv,
       connect,
       disconnect,
       async setCellInfo(field: 0 | 1, value: string) {

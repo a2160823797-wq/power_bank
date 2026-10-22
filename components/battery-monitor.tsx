@@ -75,7 +75,7 @@ function EmptyValue() {
 }
 
 export default function BatteryMonitor() {
-  const { battery } = useDeviceConnection();
+  const { battery, displayTotalVoltageMv } = useDeviceConnection();
 
   const visibleCellCount = battery.cellCount ?? 1;
   const visibleRecords = selectSafetyRecords(battery.records);
@@ -115,7 +115,7 @@ export default function BatteryMonitor() {
                 {text.totalVoltage}
               </p>
               <p className="battery-metric-value">
-                {formatVoltage(battery.totalVoltageMv)}
+                {formatVoltage(displayTotalVoltageMv)}
                 <span>V</span>
               </p>
             </div>

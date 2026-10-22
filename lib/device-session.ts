@@ -5,6 +5,7 @@ import { SharedSerialTransport } from './shared-serial';
 
 export interface DeviceCallbacks {
   onData?(session: DeviceSerialSession, state: BatteryState): void;
+  onTotalVoltage?(session: DeviceSerialSession, voltageMv: number): void;
   onError?(session: DeviceSerialSession, message: string): void;
   onDisconnect?(session: DeviceSerialSession, error: Error): void;
 }
@@ -67,6 +68,14 @@ export class DeviceSerialSession {
 
   private async openProtocols() {
     const battery = this.kind === 'battery' ? new BatterySerialSession(this.transport.createChannel(), {
+      onTotalVoltage: (voltageMv) => {
+        if (
+          this.battery === battery &&
+          this.state !== 'closing' &&
+          this.state !== 'closed'
+        )
+          this.callbacks.onTotalVoltage?.(this, voltageMv);
+      },
       onData: (state) => {
         if (
           this.battery === battery &&
