@@ -15,7 +15,7 @@ export default function NtcSimulator() {
     connected,
     disconnect,
     setTemperature: setDeviceTemperature,
-  } = useDeviceConnection();
+  } = useDeviceConnection('ntc');
   const [temperature, setTemperature] = useState(DEFAULT_TEMPERATURE);
   const [message, setMessage] = useState('');
   const controllerRef = useRef<AbortController | null>(null);

@@ -22,7 +22,6 @@ import {
   DevicePortReleaseError,
 } from './device-connection';
 import { getSavedSerialPort, rememberSerialPort } from './serial-device';
-import { getWorkspaceView } from './workspace-view';
 import {
   verifyUpgradePort,
   UpgradePortReleaseError,
@@ -44,7 +43,7 @@ interface DeviceConnection {
   manualSelection: boolean;
   error: string;
   battery: BatteryState;
-  connect: (manual?: boolean, kind?: DeviceKind) => Promise<void>;
+  connect: (manual?: boolean) => Promise<void>;
   disconnect: () => Promise<void>;
   setCellInfo: (field: 0 | 1, value: string) => Promise<void>;
   setTemperature: (
@@ -58,16 +57,117 @@ interface DeviceConnection {
 }
 
 const LAST_PORT_KEY = 'powerbank.device-last-serial-port';
+const LAST_NTC_PORT_KEY = 'powerbank.ntc-last-serial-port';
 const LAST_UPGRADE_PORT_KEY = 'powerbank.upgrade-last-successful-serial-port';
-const DeviceContext = createContext<DeviceConnection | null>(null);
+const DeviceContext = createContext<Record<DeviceKind, DeviceConnection> | null>(null);
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
-export function DeviceConnectionProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function DeviceConnectionProvider({ children }: { children: ReactNode }) {
+  const batteryController = useDeviceController('battery');
+  const ntcController = useDeviceController('ntc');
+  const controllers = [batteryController, ntcController];
+  const upgradeProbeRef = useRef<IapSerialSession | null>(null);
+  const lastUpgradePortRef = useRef<SerialPortLike | null>(null);
+
+  useEffect(() => () => {
+    void upgradeProbeRef.current?.close().catch(() => undefined);
+  }, []);
+
+  async function withUpgrade<T>(
+    operation: (port: SerialPortLike) => Promise<T>,
+  ): Promise<T> {
+    for (const controller of controllers) {
+      if (controller.connectTaskRef.current) await controller.connectTaskRef.current;
+      if (controller.closeTaskRef.current) await controller.closeTaskRef.current;
+    }
+    if (controllers.some((controller) => controller.busyRef.current))
+      throw new Error('设备连接正在切换，请稍后重试');
+    const batterySession = batteryController.sessionRef.current;
+    const ntcSession = ntcController.sessionRef.current;
+    const sessions = [batterySession, ntcSession].filter(
+      (session): session is DeviceSerialSession => session !== null,
+    );
+    if (sessions.some((session) => !session.isOpen))
+      throw new Error('请先重试断开设备连接');
+    for (const controller of controllers) controller.markBusy(true);
+    try {
+      if (upgradeProbeRef.current) {
+        await upgradeProbeRef.current.close();
+        upgradeProbeRef.current = null;
+      }
+      const serial = (navigator as Navigator & { serial: SerialApi }).serial;
+      let selectedPort = lastUpgradePortRef.current;
+      if (selectedPort) {
+        try {
+          await verifyUpgradePort(selectedPort, batterySession, ntcSession);
+        } catch (reason) {
+          if (reason instanceof UpgradePortReleaseError) throw reason;
+          selectedPort = null;
+          lastUpgradePortRef.current = null;
+        }
+      }
+      if (!selectedPort) {
+        let hasSavedPort = false;
+        try {
+          hasSavedPort = Boolean(localStorage.getItem(LAST_UPGRADE_PORT_KEY));
+        } catch {}
+        if (hasSavedPort) {
+          const ports = await serial.getPorts();
+          const preferredPort = await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
+          try {
+            selectedPort = await discoverUpgradePort(ports, preferredPort, batterySession, ntcSession);
+          } catch (reason) {
+            if (!(reason instanceof DeviceSelectionError)) throw reason;
+          }
+        }
+      }
+      if (!selectedPort) {
+        try {
+          selectedPort = await serial.requestPort();
+        } catch (reason) {
+          if (
+            reason instanceof DOMException &&
+            ['NotFoundError', 'AbortError'].includes(reason.name)
+          )
+            throw new Error('升级已取消');
+          throw reason;
+        }
+        await verifyUpgradePort(selectedPort, batterySession, ntcSession);
+      }
+      const runOperation = async (port: SerialPortLike) => {
+        const result = await operation(port);
+        lastUpgradePortRef.current = port;
+        rememberSerialPort(LAST_UPGRADE_PORT_KEY, port);
+        return result;
+      };
+      const session = sessions.find((candidate) => candidate.port === selectedPort);
+      if (session)
+        return await session.withUpgrade(runOperation);
+      return await runOperation(selectedPort);
+    } catch (reason) {
+      if (reason instanceof UpgradePortReleaseError)
+        upgradeProbeRef.current = reason.session;
+      if (reason instanceof DOMException && reason.name === 'SecurityError') {
+        throw new Error('需要授权升级设备');
+      }
+      throw reason;
+    } finally {
+      for (const controller of controllers) controller.markBusy(false);
+    }
+  }
+
+  return (
+    <DeviceContext.Provider value={{
+      battery: { ...batteryController.value, withUpgrade },
+      ntc: { ...ntcController.value, withUpgrade },
+    }}>
+      {children}
+    </DeviceContext.Provider>
+  );
+}
+
+function useDeviceController(kind: DeviceKind) {
   const serialSupported = 'serial' in navigator;
   const [connection, setConnection] = useState<Connection>('disconnected');
   const [battery, setBattery] = useState(createBatteryState);
@@ -80,8 +180,7 @@ export function DeviceConnectionProvider({
   const connectTaskRef = useRef<Promise<void> | null>(null);
   const connectControllerRef = useRef<AbortController | null>(null);
   const closeTaskRef = useRef<Promise<void> | null>(null);
-  const upgradeProbeRef = useRef<IapSerialSession | null>(null);
-  const lastUpgradePortRef = useRef<SerialPortLike | null>(null);
+  const lastPortKey = kind === 'ntc' ? LAST_NTC_PORT_KEY : LAST_PORT_KEY;
 
   const markBusy = useCallback((value: boolean) => {
     busyRef.current = value;
@@ -146,7 +245,6 @@ export function DeviceConnectionProvider({
 
   const connect = useCallback(async (
     manual = false,
-    kind: DeviceKind = 'battery',
     savedOnly = false,
   ) => {
     if (busyRef.current || sessionRef.current || !serialSupported) return;
@@ -179,7 +277,7 @@ export function DeviceConnectionProvider({
         };
         const preferred = selectedPort
           ? null
-          : await getSavedSerialPort(serial, LAST_PORT_KEY, ports);
+          : await getSavedSerialPort(serial, lastPortKey, ports);
         let result;
         if (savedOnly) {
           if (!preferred) return;
@@ -222,7 +320,7 @@ export function DeviceConnectionProvider({
         if (!session.isOpen) throw new Error('设备已断开连接');
         setConnection('connected');
         setManualSelection(false);
-        rememberSerialPort(LAST_PORT_KEY, result.port);
+        rememberSerialPort(lastPortKey, result.port);
         if (kind === 'battery') await session.requestHistory();
       } catch (reason) {
         let releaseFailed = false;
@@ -274,7 +372,7 @@ export function DeviceConnectionProvider({
     connectTaskRef.current = operation;
     await operation;
     if (connectTaskRef.current === operation) connectTaskRef.current = null;
-  }, [serialSupported, markBusy, releaseSession, disconnect]);
+  }, [kind, lastPortKey, serialSupported, markBusy, releaseSession, disconnect]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -282,129 +380,52 @@ export function DeviceConnectionProvider({
       mountedRef.current = false;
       connectControllerRef.current?.abort();
       void sessionRef.current?.close().catch(() => undefined);
-      void upgradeProbeRef.current?.close().catch(() => undefined);
     };
   }, []);
 
   useEffect(() => {
-    const view = getWorkspaceView();
-    if (view === 'upgrade') return;
-    void connect(false, view === 'temperature' ? 'ntc' : 'battery', true);
+    void connect(false, true);
   }, [connect]);
 
-  async function withUpgrade<T>(
-    operation: (port: SerialPortLike) => Promise<T>,
-  ): Promise<T> {
-    if (connectTaskRef.current) await connectTaskRef.current;
-    if (closeTaskRef.current) await closeTaskRef.current;
-    if (busyRef.current) throw new Error('设备连接正在切换，请稍后重试');
-    const session = sessionRef.current;
-    if (session && !session.isOpen) throw new Error('请先重试断开设备连接');
-    markBusy(true);
-    try {
-      if (upgradeProbeRef.current) {
-        await upgradeProbeRef.current.close();
-        upgradeProbeRef.current = null;
-      }
-      const serial = (navigator as Navigator & { serial: SerialApi }).serial;
-      let selectedPort = lastUpgradePortRef.current;
-      if (selectedPort) {
+  return {
+    sessionRef,
+    busyRef,
+    connectTaskRef,
+    closeTaskRef,
+    markBusy,
+    value: {
+      serialSupported,
+      connection,
+      connectionBusy,
+      connected: connection === 'connected',
+      deviceKind: sessionRef.current?.kind ?? null,
+      manualSelection,
+      error,
+      battery,
+      connect,
+      disconnect,
+      async setCellInfo(field: 0 | 1, value: string) {
+        const session = sessionRef.current;
+        if (!session?.isOpen || busyRef.current) throw new Error('请先连接设备');
+        markBusy(true);
         try {
-          await verifyUpgradePort(selectedPort, session);
-        } catch (reason) {
-          if (reason instanceof UpgradePortReleaseError) throw reason;
-          selectedPort = null;
-          lastUpgradePortRef.current = null;
+          await session.setCellInfo(field, value);
+        } finally {
+          markBusy(false);
         }
-      }
-      if (!selectedPort) {
-        let hasSavedPort = false;
-        try {
-          hasSavedPort = Boolean(localStorage.getItem(LAST_UPGRADE_PORT_KEY));
-        } catch {}
-        if (hasSavedPort) {
-          const ports = await serial.getPorts();
-          const preferredPort = await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
-          try {
-            selectedPort = await discoverUpgradePort(ports, preferredPort, session);
-          } catch (reason) {
-            if (!(reason instanceof DeviceSelectionError)) throw reason;
-          }
-        }
-      }
-      if (!selectedPort) {
-        try {
-          selectedPort = await serial.requestPort();
-        } catch (reason) {
-          if (
-            reason instanceof DOMException &&
-            ['NotFoundError', 'AbortError'].includes(reason.name)
-          )
-            throw new Error('升级已取消');
-          throw reason;
-        }
-        await verifyUpgradePort(selectedPort, session);
-      }
-      const runOperation = async (port: SerialPortLike) => {
-        const result = await operation(port);
-        lastUpgradePortRef.current = port;
-        rememberSerialPort(LAST_UPGRADE_PORT_KEY, port);
-        return result;
-      };
-      if (session && selectedPort === session.port)
-        return await session.withUpgrade(runOperation);
-      return await runOperation(selectedPort);
-    } catch (reason) {
-      if (reason instanceof UpgradePortReleaseError)
-        upgradeProbeRef.current = reason.session;
-      if (reason instanceof DOMException && reason.name === 'SecurityError') {
-        throw new Error('需要授权升级设备');
-      }
-      throw reason;
-    } finally {
-      markBusy(false);
-    }
-  }
-
-  return (
-    <DeviceContext.Provider
-      value={{
-        serialSupported,
-        connection,
-        connectionBusy,
-        connected: connection === 'connected',
-        deviceKind: sessionRef.current?.kind ?? null,
-        manualSelection,
-        error,
-        battery,
-        connect,
-        disconnect,
-        withUpgrade,
-        async setCellInfo(field, value) {
-          const session = sessionRef.current;
-          if (!session?.isOpen || busyRef.current) throw new Error('请先连接设备');
-          markBusy(true);
-          try {
-            await session.setCellInfo(field, value);
-          } finally {
-            markBusy(false);
-          }
-        },
-        setTemperature(temperature, timeoutMs, signal) {
-          const session = sessionRef.current;
-          if (!session?.isOpen || busyRef.current)
-            return Promise.reject(new Error('请先连接设备'));
-          return session.setTemperature(temperature, timeoutMs, signal);
-        },
-      }}
-    >
-      {children}
-    </DeviceContext.Provider>
-  );
+      },
+      setTemperature(temperature: number, timeoutMs: number, signal?: AbortSignal) {
+        const session = sessionRef.current;
+        if (!session?.isOpen || busyRef.current)
+          return Promise.reject(new Error('请先连接设备'));
+        return session.setTemperature(temperature, timeoutMs, signal);
+      },
+    },
+  };
 }
 
-export function useDeviceConnection() {
+export function useDeviceConnection(kind: DeviceKind = 'battery') {
   const value = useContext(DeviceContext);
   if (!value) throw new Error('设备连接必须在 DeviceConnectionProvider 中使用');
-  return value;
+  return value[kind];
 }

@@ -21,9 +21,13 @@ async function release(session: IapSerialSession) {
 export async function verifyUpgradePort(
   port: SerialPortLike,
   connectedSession: DeviceSerialSession | null = null,
+  ntcSession: DeviceSerialSession | null = null,
 ) {
-  if (connectedSession?.port === port) {
-    await connectedSession.identifyUpgrade();
+  const activeSession = [connectedSession, ntcSession].find(
+    (session) => session?.port === port,
+  );
+  if (activeSession) {
+    await activeSession.identifyUpgrade();
     return;
   }
   const session = new IapSerialSession(port);
@@ -38,9 +42,10 @@ export async function verifyUpgradePort(
 async function matches(
   port: SerialPortLike,
   connectedSession: DeviceSerialSession | null,
+  ntcSession: DeviceSerialSession | null,
 ) {
   try {
-    await verifyUpgradePort(port, connectedSession);
+    await verifyUpgradePort(port, connectedSession, ntcSession);
     return true;
   } catch (error) {
     if (error instanceof UpgradePortReleaseError) throw error;
@@ -53,14 +58,15 @@ export async function discoverUpgradePort(
   ports: SerialPortLike[],
   preferredPort: SerialPortLike | null = null,
   connectedSession: DeviceSerialSession | null = null,
+  ntcSession: DeviceSerialSession | null = null,
 ): Promise<SerialPortLike | null> {
   if (preferredPort && ports.includes(preferredPort)) {
-    if (await matches(preferredPort, connectedSession)) return preferredPort;
+    if (await matches(preferredPort, connectedSession, ntcSession)) return preferredPort;
   }
   let matchedPort: SerialPortLike | null = null;
   for (const port of ports) {
     if (port === preferredPort) continue;
-    if (!(await matches(port, connectedSession))) continue;
+    if (!(await matches(port, connectedSession, ntcSession))) continue;
     if (matchedPort) throw new DeviceSelectionError();
     matchedPort = port;
   }

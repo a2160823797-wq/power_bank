@@ -36,8 +36,9 @@ export default function Home() {
 function Workspace() {
   const [view, setView] = useState(getWorkspaceView);
   const glassRef = useRef<HTMLElement | null>(null);
-  const { connectionBusy, connected, deviceKind, disconnect } =
-    useDeviceConnection();
+  const { connectionBusy: batteryBusy } = useDeviceConnection();
+  const { connectionBusy: ntcBusy } = useDeviceConnection('ntc');
+  const connectionBusy = batteryBusy || ntcBusy;
 
   function clearGlassHighlight() {
     glassRef.current?.style.removeProperty('--glass-x');
@@ -62,13 +63,6 @@ function Workspace() {
 
   async function changeView(nextView: WorkspaceView) {
     if (connectionBusy) return;
-    if (
-      connected &&
-      nextView !== 'upgrade' &&
-      deviceKind !== (nextView === 'temperature' ? 'ntc' : 'battery')
-    ) {
-      await disconnect();
-    }
     clearGlassHighlight();
     setView(nextView);
     setWorkspaceView(nextView);
@@ -167,7 +161,9 @@ function Workspace() {
           />
         </div>
       </header>
-      {view !== 'upgrade' && <DeviceConnectionBar />}
+      {view !== 'upgrade' && (
+        <DeviceConnectionBar kind={view === 'temperature' ? 'ntc' : 'battery'} />
+      )}
       <div hidden={view !== 'battery'}>
         <BatteryMonitor />
       </div>

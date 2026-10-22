@@ -11,7 +11,7 @@ export function DeviceConnectionButton({ hidden = false, kind }: { hidden?: bool
     manualSelection,
     connect,
     disconnect,
-  } = useDeviceConnection();
+  } = useDeviceConnection(kind);
   const buttonText = {
     disconnected: manualSelection ? '选择设备' : '连接设备',
     connecting: '连接中',
@@ -31,7 +31,7 @@ export function DeviceConnectionButton({ hidden = false, kind }: { hidden?: bool
         void (
           connected || connection === 'release-error'
             ? disconnect()
-            : connect(manualSelection, kind)
+            : connect(manualSelection)
         ).catch(() => undefined);
       }}
     >
@@ -45,8 +45,8 @@ export function DeviceConnectionButton({ hidden = false, kind }: { hidden?: bool
   );
 }
 
-export default function DeviceConnectionBar() {
-  const { serialSupported, error } = useDeviceConnection();
+export default function DeviceConnectionBar({ kind }: { kind: DeviceKind }) {
+  const { serialSupported, error } = useDeviceConnection(kind);
   return (
     <>
       {serialSupported === false && (
