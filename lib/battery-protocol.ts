@@ -1,6 +1,6 @@
 import { crc8, type SerialPortLike } from './iap-protocol';
 
-const BEIJING_OFFSET_SECONDS = 8 * 60 * 60;
+const TIME_FORMAT_UNIX = 2;
 const COMMAND_INTERVAL_MS = 8;
 const QUERY_INTERVAL_MS = 1000;
 const MAX_PAYLOAD = 1024;
@@ -15,7 +15,7 @@ const SAFETY_RECORD_TYPES = [
 export interface SafetyRecord {
   type: (typeof SAFETY_RECORD_TYPES)[number];
   value: number; // 过充电压为 mV，异常温度为有符号整数℃
-  timeUnixSeconds: number; // 转换后的 UTC 秒
+  timeUnixSeconds: number; // 标准 UTC Unix 秒数
 }
 
 export function selectSafetyRecords(records: readonly SafetyRecord[]) {
@@ -152,10 +152,6 @@ function ascii(bytes: Uint8Array) {
   if (!bytes.length || bytes.some((byte) => byte < 0x20 || byte > 0x7e))
     return null;
   return String.fromCharCode(...bytes);
-}
-
-function deviceTimeToUnix(seconds: number) {
-  return seconds - BEIJING_OFFSET_SECONDS;
 }
 
 interface BatteryCallbacks {
@@ -396,10 +392,10 @@ export class BatterySerialSession {
     if (!this.isOpen) throw new Error('请先连接设备');
     if (this.pendingClock) throw new Error('上一条设备校时尚未结束');
     const payload = new Uint8Array(5);
-    payload[0] = 1;
+    payload[0] = TIME_FORMAT_UNIX;
     new DataView(payload.buffer).setUint32(
       1,
-      Math.floor(Date.now() / 1000) + BEIJING_OFFSET_SECONDS,
+      Math.floor(Date.now() / 1000),
       true,
     );
     const response = new Promise<void>((resolve, reject) => {
@@ -628,7 +624,7 @@ export class BatterySerialSession {
   }
 
   private applyHistory(data: Uint8Array, view: DataView) {
-    if (data[0] === 0 && data.length === 3) {
+    if (data[0] === 0 && data.length === 4 && data[3] === TIME_FORMAT_UNIX) {
       this.historyStarted = true;
       this.historyInvalid = false;
       this.state.records = [];
@@ -638,7 +634,8 @@ export class BatterySerialSession {
     }
     if (
       data[0] === 1 &&
-      data.length === 8 &&
+      data.length === 9 &&
+      data[8] === TIME_FORMAT_UNIX &&
       data[1] < SAFETY_RECORD_TYPES.length
     ) {
       const type = SAFETY_RECORD_TYPES[data[1]];
@@ -647,7 +644,7 @@ export class BatterySerialSession {
       const record: SafetyRecord = {
         type,
         value: view.getInt16(2, true),
-        timeUnixSeconds: deviceTimeToUnix(view.getUint32(4, true)),
+        timeUnixSeconds: view.getUint32(4, true),
       };
       this.state.records.push(record);
       if (!this.historyStarted) {
@@ -656,7 +653,7 @@ export class BatterySerialSession {
       }
       return true;
     }
-    if (data[0] === 2 && data.length === 3) {
+    if (data[0] === 2 && data.length === 4 && data[3] === TIME_FORMAT_UNIX) {
       const total = view.getUint16(1, true);
       this.state.historyStatus =
         this.historyStarted &&
