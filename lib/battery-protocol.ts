@@ -15,13 +15,14 @@ const SAFETY_RECORD_TYPES = [
 export interface SafetyRecord {
   type: (typeof SAFETY_RECORD_TYPES)[number];
   value: number; // 过充电压为 mV，异常温度为有符号整数℃
-  timeUnixSeconds: number; // 标准 UTC Unix 秒数
+  timeUnixSeconds: number; // 标准 UTC Unix 秒数，0 表示发生时未校时
 }
 
 export function selectSafetyRecords(records: readonly SafetyRecord[]) {
   const counts = new Map<SafetyRecord['type'], number>();
+  // 固件按存储先后上传；时间未知的记录也按保存顺序选取每类最新5条。
   return [...records]
-    .sort((a, b) => b.timeUnixSeconds - a.timeUnixSeconds)
+    .reverse()
     .filter((record) => {
       const count = counts.get(record.type) ?? 0;
       if (count >= 5) return false;

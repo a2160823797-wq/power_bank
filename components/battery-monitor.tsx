@@ -42,6 +42,7 @@ const beijingHistoryTime = new Intl.DateTimeFormat('zh-CN', {
 });
 
 function formatTime(seconds: number) {
+  if (seconds === 0) return '发生时间未校时';
   return beijingHistoryTime.format(seconds * 1000);
 }
 
