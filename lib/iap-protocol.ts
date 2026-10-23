@@ -66,10 +66,21 @@ type StageCallback = (stage: 'handshake' | 'writing' | 'verifying') => void;
 
 class RetryableError extends Error {}
 
+export class IapResetDisconnectError extends Error {
+  constructor(error: unknown) {
+    super('APP 切换 Bootloader 时连接中断', { cause: error });
+    this.name = 'IapResetDisconnectError';
+  }
+}
+
 class ByteInbox {
   private bytes: number[] = [];
   private listeners = new Set<() => void>();
   private failure: Error | null = null;
+
+  get failureReason() {
+    return this.failure;
+  }
 
   push(chunk: Uint8Array) {
     this.bytes.push(...chunk);
@@ -185,16 +196,11 @@ export class IapSerialSession {
   private readTask: Promise<void> | null = null;
   private aborted = false;
   private opened = false;
-  private disconnected = false;
 
   constructor(
     private port: SerialPortLike,
     private config: IapConfig = DEFAULT_CONFIG,
   ) {}
-
-  get isDisconnected() {
-    return this.disconnected;
-  }
 
   async open() {
     await this.port.open({
@@ -216,21 +222,16 @@ export class IapSerialSession {
       while (this.reader) {
         const { value, done } = await this.reader.read();
         if (done) {
-          if (!this.aborted) {
-            this.disconnected = true;
-            this.inbox.fail(new Error('串口已断开'));
-          }
+          if (!this.aborted) this.inbox.fail(new Error('串口已断开'));
           break;
         }
         if (value?.length) this.inbox.push(value);
       }
     } catch (error) {
-      if (!this.aborted) {
-        this.disconnected = true;
+      if (!this.aborted)
         this.inbox.fail(
           error instanceof Error ? error : new Error('串口已断开'),
         );
-      }
     }
   }
 
@@ -240,16 +241,10 @@ export class IapSerialSession {
 
   private async write(data: Uint8Array) {
     this.ensureActive();
-    if (!this.port.writable) {
-      this.disconnected = true;
-      throw new Error('串口不可写');
-    }
+    if (!this.port.writable) throw new Error('串口不可写');
     const writer = this.port.writable.getWriter();
     try {
       await writer.write(data);
-    } catch (error) {
-      if (!this.aborted) this.disconnected = true;
-      throw error;
     } finally {
       writer.releaseLock();
     }
@@ -352,14 +347,22 @@ export class IapSerialSession {
     let option = await this.readBootOption();
     if (option.state === BootState.App) {
       try {
-        await this.command(2, new Uint8Array([BootState.AppRequestUpgrade]));
+        try {
+          await this.command(2, new Uint8Array([BootState.AppRequestUpgrade]));
+        } catch (error) {
+          if (!(error instanceof RetryableError)) throw error;
+          this.ensureActive();
+        }
+        await this.delay(300);
+        option = await this.readBootOptionWithRetry();
+        if (option.state === BootState.App) throw new Error('设备仍处于 APP 状态');
       } catch (error) {
-        if (!(error instanceof RetryableError)) throw error;
-        this.ensureActive();
+        // 仅此阶段尚未发送固件，允许上层恢复同一设备连接
+        if (!this.aborted &&
+            (this.inbox.failureReason || (error instanceof Error && error.name === 'NetworkError')))
+          throw new IapResetDisconnectError(error);
+        throw error;
       }
-      await this.delay(300);
-      option = await this.readBootOptionWithRetry();
-      if (option.state === BootState.App) throw new Error('设备仍处于 APP 状态');
     }
     // 每次升级都重置接收状态，避免上次未完成的传输阻止新参数
     const response = await this.command(2, new Uint8Array([BootState.AppUpdate]));

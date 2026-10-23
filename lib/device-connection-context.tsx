@@ -13,7 +13,7 @@ import {
   type BatteryState,
 } from './battery-protocol';
 import { NtcIdentityTimeoutError, type NtcReply } from './ntc-protocol';
-import type { IapSerialSession, SerialApi, SerialPortLike } from './iap-protocol';
+import { IapResetDisconnectError, type IapSerialSession, type SerialApi, type SerialPortLike } from './iap-protocol';
 import { DeviceSerialSession, type DeviceKind } from './device-session';
 import {
   connectSelectedDevice,
@@ -26,8 +26,8 @@ import {
   verifyUpgradePort,
   UpgradePortReleaseError,
   discoverUpgradePort,
-  UpgradeResetDisconnectError,
-  reconnectUpgradePort,
+  withUpgradeSession,
+  resumeUpgradeAfterReset,
 } from './upgrade-connection';
 
 type Connection =
@@ -55,7 +55,7 @@ interface DeviceConnection {
     signal?: AbortSignal,
   ) => Promise<NtcReply>;
   withUpgrade: <T>(
-    operation: (port: SerialPortLike) => Promise<T>,
+    operation: (session: IapSerialSession) => Promise<T>,
   ) => Promise<T>;
 }
 
@@ -66,23 +66,32 @@ const DeviceContext = createContext<Record<DeviceKind, DeviceConnection> | null>
 const messageOf = (reason: unknown) =>
   reason instanceof Error ? reason.message : String(reason);
 
-export function DeviceConnectionProvider({ children }: { children: ReactNode }) {
+export function DeviceConnectionProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const batteryController = useDeviceController('battery');
   const ntcController = useDeviceController('ntc');
   const controllers = [batteryController, ntcController];
   const upgradeProbeRef = useRef<IapSerialSession | null>(null);
   const lastUpgradePortRef = useRef<SerialPortLike | null>(null);
 
-  useEffect(() => () => {
-    void upgradeProbeRef.current?.close().catch(() => undefined);
-  }, []);
+  useEffect(
+    () => () => {
+      void upgradeProbeRef.current?.close().catch(() => undefined);
+    },
+    [],
+  );
 
   async function withUpgrade<T>(
-    operation: (port: SerialPortLike) => Promise<T>,
+    operation: (session: IapSerialSession) => Promise<T>,
   ): Promise<T> {
     for (const controller of controllers) {
-      if (controller.connectTaskRef.current) await controller.connectTaskRef.current;
-      if (controller.closeTaskRef.current) await controller.closeTaskRef.current;
+      if (controller.connectTaskRef.current)
+        await controller.connectTaskRef.current;
+      if (controller.closeTaskRef.current)
+        await controller.closeTaskRef.current;
     }
     if (controllers.some((controller) => controller.busyRef.current))
       throw new Error('设备连接正在切换，请稍后重试');
@@ -117,9 +126,18 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         } catch {}
         if (hasSavedPort) {
           const ports = await serial.getPorts();
-          const preferredPort = await getSavedSerialPort(serial, LAST_UPGRADE_PORT_KEY, ports);
+          const preferredPort = await getSavedSerialPort(
+            serial,
+            LAST_UPGRADE_PORT_KEY,
+            ports,
+          );
           try {
-            selectedPort = await discoverUpgradePort(ports, preferredPort, batterySession, ntcSession);
+            selectedPort = await discoverUpgradePort(
+              ports,
+              preferredPort,
+              batterySession,
+              ntcSession,
+            );
           } catch (reason) {
             if (!(reason instanceof DeviceSelectionError)) throw reason;
           }
@@ -139,27 +157,31 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
         await verifyUpgradePort(selectedPort, batterySession, ntcSession);
       }
       const runOperation = async (port: SerialPortLike) => {
-        const result = await operation(port);
-        lastUpgradePortRef.current = port;
-        rememberSerialPort(LAST_UPGRADE_PORT_KEY, port);
-        return result;
+        return withUpgradeSession(port, operation);
       };
-      const session = sessions.find((candidate) => candidate.port === selectedPort);
+      const session = sessions.find(
+        (candidate) => candidate.port === selectedPort,
+      );
+      let result: T;
       try {
-        if (session)
-          return await session.withUpgrade(runOperation);
-        return await runOperation(selectedPort);
+        result = session
+          ? await session.withUpgrade(runOperation)
+          : await runOperation(selectedPort);
       } catch (reason) {
-        if (!(reason instanceof UpgradeResetDisconnectError)) throw reason;
+        if (!(reason instanceof IapResetDisconnectError)) throw reason;
         for (const controller of controllers) {
           if (controller.sessionRef.current?.port === selectedPort)
             await controller.value.disconnect();
           if (controller.closeTaskRef.current) await controller.closeTaskRef.current;
         }
         for (const controller of controllers) controller.markBusy(true);
-        await reconnectUpgradePort(selectedPort);
-        return await runOperation(selectedPort);
+        const resumed = await resumeUpgradeAfterReset(serial, selectedPort, operation);
+        selectedPort = resumed.port;
+        result = resumed.result;
       }
+      lastUpgradePortRef.current = selectedPort;
+      rememberSerialPort(LAST_UPGRADE_PORT_KEY, selectedPort);
+      return result;
     } catch (reason) {
       if (reason instanceof UpgradePortReleaseError)
         upgradeProbeRef.current = reason.session;
@@ -173,10 +195,12 @@ export function DeviceConnectionProvider({ children }: { children: ReactNode }) 
   }
 
   return (
-    <DeviceContext.Provider value={{
-      battery: { ...batteryController.value, withUpgrade },
-      ntc: { ...ntcController.value, withUpgrade },
-    }}>
+    <DeviceContext.Provider
+      value={{
+        battery: { ...batteryController.value, withUpgrade },
+        ntc: { ...ntcController.value, withUpgrade },
+      }}
+    >
       {children}
     </DeviceContext.Provider>
   );

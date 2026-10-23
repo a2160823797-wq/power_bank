@@ -1,4 +1,4 @@
-import { BootState, IapSerialSession, type SerialPortLike } from './iap-protocol';
+import { BootState, IapSerialSession, type SerialApi, type SerialPortLike } from './iap-protocol';
 import { DEFAULT_CONFIG } from './iap-config';
 import type { DeviceSerialSession } from './device-session';
 import { DeviceSelectionError } from './device-connection';
@@ -10,13 +10,6 @@ export class UpgradePortReleaseError extends Error {
   }
 }
 
-export class UpgradeResetDisconnectError extends Error {
-  constructor(error: unknown) {
-    super(error instanceof Error ? error.message : String(error));
-    this.name = 'UpgradeResetDisconnectError';
-  }
-}
-
 async function release(session: IapSerialSession) {
   try {
     await session.close();
@@ -25,66 +18,57 @@ async function release(session: IapSerialSession) {
   }
 }
 
-export async function upgradeFirmware(
+export async function withUpgradeSession<T>(
   port: SerialPortLike,
-  ...[fileName, firmware, onProgress, onStage]: Parameters<IapSerialSession['upgrade']>
+  operation: (session: IapSerialSession) => Promise<T>,
 ) {
   const session = new IapSerialSession(port);
-  let before: BootState | undefined;
-  let cur_stage: 'handshake' | 'writing' | 'verifying' = 'handshake';
-  let sent = 0;
   try {
     await session.open();
-    before = (await session.readBootOption()).state;
-    await session.upgrade(
-      fileName,
-      firmware,
-      (percent, count) => {
-        sent = count;
-        onProgress(percent, count);
-      },
-      (stage) => {
-        cur_stage = stage;
-        onStage(stage);
-      },
-    );
-  } catch (error) {
-    // 只恢复 APP 复位进入 Bootloader 时的断链，写入开始后不自动重发
-    if (
-      before === BootState.App &&
-      cur_stage === 'handshake' &&
-      sent === 0 &&
-      session.isDisconnected
-    ) {
-      throw new UpgradeResetDisconnectError(error);
-    }
-    throw error;
+    return await operation(session);
   } finally {
     await release(session);
   }
 }
 
-export async function reconnectUpgradePort(port: SerialPortLike) {
+export async function resumeUpgradeAfterReset<T>(
+  serial: SerialApi,
+  sourcePort: SerialPortLike,
+  operation: (session: IapSerialSession) => Promise<T>,
+) {
+  const sourceInfo = sourcePort.getInfo();
   for (let attempt = 1; ; attempt++) {
-    const session = new IapSerialSession(port);
-    let option;
-    try {
-      await session.open();
-      option = await session.readBootOptionWithRetry();
-    } catch (error) {
-      if (attempt >= DEFAULT_CONFIG.maxAttempts) throw error;
-    } finally {
-      await release(session);
-    }
-    if (option) {
-      if (
-        option.state !== BootState.AppRequestUpgrade &&
-        option.state !== BootState.AppUpdate
-      ) {
-        throw new Error('连接已恢复，但设备未进入升级模式；未重发固件');
+    const ports = await serial.getPorts();
+    const matches = ports.filter((port) => {
+      const info = port.getInfo();
+      return info.usbVendorId === sourceInfo.usbVendorId &&
+        info.usbProductId === sourceInfo.usbProductId &&
+        info.bluetoothServiceClassId === sourceInfo.bluetoothServiceClassId;
+    });
+    if (matches.length > 1) throw new DeviceSelectionError();
+    const port = matches[0];
+    if (port) {
+      const session = new IapSerialSession(port);
+      try {
+        await session.open();
+      } catch (error) {
+        await release(session);
+        if (!(error instanceof Error && error.name === 'NetworkError') || attempt >= DEFAULT_CONFIG.maxAttempts)
+          throw error;
+        await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 350));
+        continue;
       }
-      return;
+      try {
+        const option = await session.readBootOptionWithRetry();
+        if (option.state !== BootState.AppRequestUpgrade && option.state !== BootState.AppUpdate)
+          throw new Error('连接已恢复，但设备未进入升级模式；未发送固件');
+        return { port, result: await operation(session) };
+      } finally {
+        await release(session);
+      }
     }
+    if (attempt >= DEFAULT_CONFIG.maxAttempts)
+      throw new Error('复位后未找到原升级设备，请检查串口连接');
     await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 350));
   }
 }

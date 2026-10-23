@@ -1,7 +1,6 @@
 import { useRef, useState } from 'react';
 import { FileCheck2, Upload } from 'lucide-react';
 import { validateFirmware } from '@/lib/iap-protocol';
-import { upgradeFirmware } from '@/lib/upgrade-connection';
 import { useDeviceConnection } from '@/lib/device-connection-context';
 
 type Stage =
@@ -108,9 +107,8 @@ export default function FirmwareUpdater({ active }: { active: boolean }) {
     setStage('connecting');
     runningRef.current = true;
     try {
-      await withUpgrade(async (port) => {
-        await upgradeFirmware(
-          port,
+      await withUpgrade(async (session) => {
+        await session.upgrade(
           firmware.file.name,
           firmware.data,
           (percent) => setProgress(percent),
