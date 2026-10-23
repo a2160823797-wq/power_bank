@@ -155,6 +155,11 @@ export class DeviceSerialSession {
     return this.battery!.requestHistory();
   }
 
+  synchronizeClock() {
+    if (!this.isOpen || !this.battery) return Promise.reject(new Error('请先连接电池设备'));
+    return this.battery.synchronizeClock();
+  }
+
   setCellInfo(field: 0 | 1, value: string) {
     if (!this.isOpen || !this.battery) return Promise.reject(new Error('请先连接电池设备'));
     return this.battery!.setCellInfo(field, value);
@@ -223,7 +228,10 @@ export class DeviceSerialSession {
           throw new Error('设备已断开连接');
         this.state = 'open';
         await this.identify(500);
-        if (this.kind === 'battery') await this.requestHistory();
+        if (this.kind === 'battery') {
+          await this.synchronizeClock();
+          await this.requestHistory();
+        }
       } else {
         throw new Error('设备已断开连接');
       }

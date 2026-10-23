@@ -208,6 +208,10 @@ export class BatterySerialSession {
   private historyStarted = false;
   private historyInvalid = false;
   private pendingIdentity: PendingIdentity | null = null;
+  private pendingClock: {
+    resolve(): void;
+    reject(error: Error): void;
+  } | null = null;
   private pendingInfoWrite: {
     field: number;
     resolve(): void;
@@ -278,6 +282,7 @@ export class BatterySerialSession {
     if (this.query_timer !== null) globalThis.clearTimeout(this.query_timer);
     this.query_timer = null;
     this.pendingIdentity?.reject(new Error('串口已关闭'));
+    this.pendingClock?.reject(new Error('串口已关闭'));
     this.pendingInfoWrite?.reject(new Error('串口已关闭'));
     this.cancelWriteDelay?.();
     this.parser.clear();
@@ -385,6 +390,34 @@ export class BatterySerialSession {
     this.state.historyExpected = null;
     this.emit();
     return this.queueWrite([[0x0a, new Uint8Array()]]);
+  }
+
+  async synchronizeClock() {
+    if (!this.isOpen) throw new Error('请先连接设备');
+    if (this.pendingClock) throw new Error('上一条设备校时尚未结束');
+    const payload = new Uint8Array(5);
+    payload[0] = 1;
+    new DataView(payload.buffer).setUint32(
+      1,
+      Math.floor(Date.now() / 1000) + BEIJING_OFFSET_SECONDS,
+      true,
+    );
+    const response = new Promise<void>((resolve, reject) => {
+      const finish = (error?: Error) => {
+        globalThis.clearTimeout(timer);
+        this.pendingClock = null;
+        if (error) reject(error);
+        else resolve();
+      };
+      const timer = globalThis.setTimeout(
+        () => finish(new Error('设备校时回复超时，异常记录时间未确认')),
+        3000,
+      );
+      this.pendingClock = { resolve: () => finish(), reject: finish };
+    });
+    const write = this.queueWrite([[0x04, payload]]);
+    void write.catch((error: Error) => this.pendingClock?.reject(error));
+    await Promise.all([response, write]);
   }
 
   async setCellInfo(field: 0 | 1, value: string) {
@@ -498,6 +531,11 @@ export class BatterySerialSession {
 
   private receive(command: number, payload: Uint8Array) {
     if (!this.active) return;
+    if (command === 0x04 && payload.length === 1 && this.pendingClock) {
+      if (payload[0] === 1) this.pendingClock.resolve();
+      else this.pendingClock.reject(new Error('设备拒绝校时，异常记录时间未确认'));
+      return;
+    }
     if (command === 0x09 && payload.length === 2 && this.pendingInfoWrite?.field === payload[0]) {
       if (payload[1] === 0) this.pendingInfoWrite.resolve();
       else this.pendingInfoWrite.reject(new Error(`电芯设置失败，结果码：${payload[1]}`));

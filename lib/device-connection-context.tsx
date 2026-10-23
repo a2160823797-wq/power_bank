@@ -378,7 +378,10 @@ function useDeviceController(kind: DeviceKind) {
         setConnection('connected');
         setManualSelection(false);
         rememberSerialPort(lastPortKey, result.port);
-        if (kind === 'battery') await session.requestHistory();
+        if (kind === 'battery') {
+          await session.synchronizeClock();
+          await session.requestHistory();
+        }
       } catch (reason) {
         let releaseFailed = false;
         let message = messageOf(reason);

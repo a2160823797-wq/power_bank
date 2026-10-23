@@ -284,6 +284,7 @@ server.registerTool(
           );
           await cur_connection.device.open();
           await cur_connection.device.identify(2200);
+          if (mode === 'battery') await cur_connection.device.synchronizeClock();
         }
         return result({
           connected: true,
