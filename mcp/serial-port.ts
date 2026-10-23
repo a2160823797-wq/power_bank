@@ -1,5 +1,71 @@
 import { SerialPort } from 'serialport';
+import { execFile } from 'node:child_process';
+import { join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { promisify } from 'node:util';
 import type { SerialPortLike } from '../lib/iap-protocol';
+import { cycleUsbPortScript } from './usb-port-control';
+
+const execFileAsync = promisify(execFile);
+
+export async function releaseUsbSerialPort(
+  port: Awaited<ReturnType<typeof SerialPort.list>>[number],
+) {
+  if (process.platform !== 'win32') throw new Error('释放外部串口连接目前仅支持 Windows');
+  if (
+    !port.pnpId?.startsWith('USB\\') ||
+    /MKLink|VID_0D28|MI_04/i.test(`${port.friendlyName} ${port.pnpId}`)
+  )
+    throw new Error('只能重启明确的目标 USB 串口，不能重启下载器或系统串口');
+
+  const utility = join(
+    process.env.SystemRoot ?? 'C:\\Windows',
+    'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe',
+  );
+  try {
+    await execFileAsync(utility, [
+      '-NoProfile', '-NonInteractive', '-EncodedCommand',
+      Buffer.from(cycleUsbPortScript, 'utf16le').toString('base64'),
+    ], {
+      windowsHide: true,
+      timeout: 15000,
+      env: {
+        ...process.env,
+        PATHEXT: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD',
+        POWERBANK_RELEASE_DEVICE_ID: port.pnpId,
+      },
+    });
+  } catch (error) {
+    const failure = error as Error & { stdout?: string; stderr?: string };
+    throw new Error(`重启 ${port.path} USB 串口失败：${failure.stdout?.trim() || failure.stderr?.trim() || failure.message}`);
+  }
+
+  let lastError = '设备尚未重新枚举';
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const available = (await SerialPort.list()).find((item) => item.pnpId === port.pnpId);
+    if (available) {
+      const probe = new LocalSerialPort(available.path);
+      try {
+        await probe.open({
+          baudRate: 1500000,
+          dataBits: 8,
+          stopBits: 1,
+          parity: 'none',
+          flowControl: 'none',
+          bufferSize: 65536,
+        });
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : String(error);
+        await delay(250);
+        continue;
+      }
+      await probe.close();
+      return { port: available.path, released: true, method: 'usb_port_cycle', pnpId: port.pnpId };
+    }
+    await delay(250);
+  }
+  throw new Error(`已请求重启 ${port.path}，但未确认串口释放：${lastError}`);
+}
 
 // 把本地串口适配为上位机已有的 Web Serial 接口，共用全部协议实现
 export class LocalSerialPort implements SerialPortLike {

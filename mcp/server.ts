@@ -21,7 +21,7 @@ import {
   type SerialPortLike,
 } from '../lib/iap-protocol';
 import { SharedSerialTransport } from '../lib/shared-serial';
-import { LocalSerialPort } from './serial-port';
+import { LocalSerialPort, releaseUsbSerialPort } from './serial-port';
 
 type Mode = 'battery' | 'ntc' | 'iap';
 type UpgradeStage = 'handshake' | 'writing' | 'verifying';
@@ -59,7 +59,7 @@ const server = new McpServer(
   { name: 'powerbank', version: '0.1.0' },
   {
     instructions:
-      '通过本地串口使用 PowerBank 上位机的原始协议。先 list_ports，再用明确的端口 connect。IAP 使用 APP .bin，iap_start 返回任务 ID，必须用 iap_status 等待终态。仅 succeeded 表示状态、长度及 CRC32 均已通过设备确认。不要在失败或取消后自动重发固件。与浏览器或其他串口工具不可同时占用同一端口；完成后 disconnect。',
+      '通过本地串口使用 PowerBank 上位机的原始协议。先 list_ports，再用明确的端口 connect。外部程序占用目标串口时，可用 release_port 断开该端口的连接；Windows 会重启指定 USB 串口设备，不得在升级中使用。IAP 使用 APP .bin，iap_start 返回任务 ID，必须用 iap_status 等待终态。仅 succeeded 表示状态、长度及 CRC32 均已通过设备确认。不要在失败或取消后自动重发固件。完成后 disconnect。',
   },
 );
 const readOnly = {
@@ -221,7 +221,7 @@ server.registerTool(
   'connect',
   {
     description:
-      '连接明确指定的串口并确认设备身份。battery 启动电池监测，ntc 连接温度模拟器，iap 仅连接升级协议。波特率固定 1500000；请先断开占用该端口的网页',
+      '连接明确指定的串口并确认设备身份。battery 启动电池监测，ntc 连接温度模拟器，iap 仅连接升级协议。波特率固定 1500000；外部程序占用时可先 release_port',
     inputSchema: {
       port: z.string().min(1),
       mode: z.enum(['battery', 'ntc', 'iap']).default('battery'),
@@ -319,6 +319,32 @@ server.registerTool(
     exclusive(async () => {
       await disconnect();
       return result({ connected: false });
+    }),
+);
+
+server.registerTool(
+  'release_port',
+  {
+    description:
+      '释放明确指定的目标串口。本 MCP 持有时正常关闭；外部程序占用时，Windows 重启该 USB 串口设备使其连接断开，并实际打开/关闭端口确认释放。会中断该端口通信，不得在任何程序升级过程中调用；不支持下载器或系统串口',
+    inputSchema: { port: z.string().min(1) },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
+  },
+  async ({ port }) =>
+    exclusive(async () => {
+      const available = (await SerialPort.list()).find(
+        (item) => item.path.toLowerCase() === port.toLowerCase(),
+      );
+      if (!available) throw new Error('串口不存在，请先 list_ports');
+      if (connection?.port.toLowerCase() === available.path.toLowerCase()) {
+        await disconnect();
+        return result({ port: available.path, released: true, method: 'mcp_disconnect' });
+      }
+      return result(await releaseUsbSerialPort(available));
     }),
 );
 
